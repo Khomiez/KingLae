@@ -1,0 +1,12 @@
+services:
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: kinglae-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT  — ESP32 devices & backend
+      - "9001:9001"   # WS    — browser / caregiver app
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
