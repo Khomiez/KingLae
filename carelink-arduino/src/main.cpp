@@ -5,17 +5,27 @@
 #include "secrets.h"
 
 // --- Hardware Pins ---
-const int buttonPin = 34; // ขาที่ต่อกับช่อง OUT ของปุ่ม
+const int buttonPinSOS = 34; // ขาเดิมสำหรับปุ่มฉุกเฉิน
+const int buttonPinAck = 26; // ขาที่ต่อกับปุ่ม 4-pin (กดเพื่อ Acknowledged)
+const int ledPin = 33;       // ขาที่ต่อกับ LED แสดงสถานะการเชื่อมต่อ
+const int batteryLedPin = 32; // 💡 ขาที่ต่อกับ LED แสดงสถานะแบตเตอรี่
 
 // --- Global Objects ---
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 // --- State Variables ---
-int lastState = -1;
+int lastStateSOS = -1;
+int lastStateAck = HIGH; 
+
 unsigned long lastHeartbeat = 0;
 const long heartbeatInterval = 30000; // 30 วินาที
 unsigned long lastReconnectAttempt = 0;
+
+// 💡 ตัวแปรจัดการแบตเตอรี่
+int batteryLevel = 15; // จำลองค่าเริ่มต้นที่ 85%
+unsigned long lastBatteryBlink = 0;
+bool batteryLedState = false;
 
 // --- Functions ---
 void setup_wifi()
@@ -64,34 +74,40 @@ bool reconnect()
     {
       Serial.println("connected");
       client.publish(lwtTopic, "ONLINE", true);
+      
+      // เปิดไฟ LED เมื่อเชื่อมต่อ MQTT สำเร็จ
+      digitalWrite(ledPin, HIGH); 
+      
       return true;
     }
     else
     {
       Serial.printf("failed, rc=%d. Try again in 5 seconds.\n", client.state());
+      
+      // ปิดไฟ LED หากเชื่อมต่อ MQTT ไม่สำเร็จ
+      digitalWrite(ledPin, LOW); 
     }
   }
   return false;
 }
 
-void sendEvent(const char *eventType)
+void sendEvent(const char *eventType, const char *statusStr = "PENDING")
 {
   if (!client.connected())
   {
     reconnect();
   }
 
-  // สร้าง JSON Payload ตาม schema ในฐานข้อมูล
+  // สร้าง JSON Payload 
   JsonDocument doc;
-  doc["device_mac"] = device_id; // ใช้ device_id เป็น MAC address
+  doc["device_mac"] = device_id; 
   doc["event_type"] = eventType;
-  doc["status"] = "PENDING";      // ค่าเริ่มต้นสำหรับ event ใหม่คือ PENDING
-  doc["battery_level"] = 85;      // จำลองแบตเตอรี่ (ควรเป็น % 0-100 ตาม schema)
+  doc["status"] = statusStr;      
+  doc["battery_level"] = batteryLevel; // 💡 ใช้ตัวแปร Global แทนค่าคงที่ที่ฮาร์ดโค้ดไว้
 
   char buffer[256];
   serializeJson(doc, buffer);
 
-  // ส่งไปที่ Topic: iot/device/[mac]/event
   char topic[64];
   snprintf(topic, sizeof(topic), "iot/device/%s/event", device_id);
 
@@ -112,51 +128,80 @@ void setup()
 {
   Serial.begin(115200);
 
-  pinMode(buttonPin, INPUT);
+  pinMode(buttonPinSOS, INPUT);
+  pinMode(buttonPinAck, INPUT_PULLUP); 
+  
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
+
+  // 💡 ตั้งค่าพิน LED แบตเตอรี่
+  pinMode(batteryLedPin, OUTPUT);
+  digitalWrite(batteryLedPin, HIGH); // สมมติว่าเปิดเครื่องมาแบตยังดีอยู่ ให้ไฟติดค้างไว้ก่อน
 
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
 
   Serial.println("\n--- 🎛️ เริ่มระบบ CareLink IoT ---");
-
-  // ส่ง Event เริ่มต้น (ใช้ SOS หรือเว้นไว้ถ้าระบบ bridge รองรับ heartbeat แยก)
-  // ในที่นี้เราจะไม่ส่ง event ไปที่ตาราง events โดยตรงถ้าเป็นแค่ heartbeat
 }
 
 void loop()
 {
   if (!client.connected())
   {
+    digitalWrite(ledPin, LOW);
     reconnect();
   }
   client.loop();
 
-  // --- การจัดการปุ่ม ---
-  int currentState = digitalRead(buttonPin);
+  unsigned long now = millis(); // ดึงค่าเวลาปัจจุบันมาใช้ใน Loop
 
-  if (currentState != lastState)
+  // --- 💡 การจัดการ LED แสดงสถานะแบตเตอรี่ ---
+  if (batteryLevel > 20) 
   {
-    if (currentState == HIGH)
+    // แบตเตอรี่ปกติ (> 20%) ให้ไฟติดค้าง
+    digitalWrite(batteryLedPin, HIGH);
+  } 
+  else 
+  {
+    // แบตเตอรี่อ่อน (<= 20%) ให้ไฟกะพริบเตือนทุกๆ 500 มิลลิวินาที
+    if (now - lastBatteryBlink > 500) 
     {
-      Serial.println("สถานะปุ่ม: 🟢 HIGH (Button Pressed)");
-      // ส่ง SOS ไปยัง database (ผ่าน MQTT Bridge)
-      sendEvent("SOS");
+      lastBatteryBlink = now;
+      batteryLedState = !batteryLedState; // สลับสถานะ ปิด-เปิด
+      digitalWrite(batteryLedPin, batteryLedState);
     }
-    else
-    {
-      Serial.println("สถานะปุ่ม: 🔴 LOW (Button Released)");
-    }
-
-    delay(50); // Debounce
-    lastState = currentState;
   }
 
-  // --- ส่งสถานะออนไลน์ (Heartbeat) ไปที่ topic แยกถ้ามี หรือใช้วิธีอื่น ---
-  unsigned long now = millis();
+  // --- การจัดการปุ่ม SOS (พิน 34) ---
+  int currentSOS = digitalRead(buttonPinSOS);
+  if (currentSOS != lastStateSOS)
+  {
+    if (currentSOS == HIGH)
+    {
+      Serial.println("สถานะปุ่ม SOS: 🔴 HIGH (Button Pressed)");
+      sendEvent("SOS", "PENDING"); 
+    }
+    delay(50); // Debounce
+    lastStateSOS = currentSOS;
+  }
+
+  // --- การจัดการปุ่ม ACK (พิน 26) ---
+  int currentAck = digitalRead(buttonPinAck);
+  if (currentAck != lastStateAck)
+  {
+    if (currentAck == LOW)
+    {
+      Serial.println("สถานะปุ่ม ACK: 🟢 LOW (Button Pressed)");
+      sendEvent("ASSIST", "ACKNOWLEDGED"); 
+    }
+    delay(50); // Debounce
+    lastStateAck = currentAck;
+  }
+
+  // --- ส่งสถานะออนไลน์ (Heartbeat) ---
   if (now - lastHeartbeat > heartbeatInterval)
   {
     lastHeartbeat = now;
-    // เผยแพร่ status ไปที่ topic สำหรับ LWT/Status
     char lwtTopic[64];
     snprintf(lwtTopic, sizeof(lwtTopic), "iot/device/%s/status", device_id);
     client.publish(lwtTopic, "ONLINE", true);
