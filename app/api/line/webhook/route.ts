@@ -94,7 +94,7 @@ function isTodayHistoryRequest(event: LineEvent) {
 async function buildTodayHistorySummary() {
   const { startIso, endIso } = getTodayBangkokRange();
 
-  const PATIENT_ID = "22222222-2222-2222-2222-222222222222";
+  const PATIENT_ID = "10000000-0000-0000-0000-000000000001";
 
   const { data: rows, error } = await supabase
     .from("events")
