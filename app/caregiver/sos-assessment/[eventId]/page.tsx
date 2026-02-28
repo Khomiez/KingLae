@@ -86,15 +86,6 @@ export default async function SOSAssessmentPage({ params }: PageProps) {
   const device = event.devices
   const age = calculateAge(patient?.date_of_birth ?? null)
 
-  // Format timestamp
-  const eventTime = new Date(event.created_at).toLocaleString('th-TH', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-
   return (
     <SOSAssessmentClient
       eventId={eventId}
@@ -102,7 +93,7 @@ export default async function SOSAssessmentPage({ params }: PageProps) {
       patient={patient}
       device={device}
       age={age}
-      eventTime={eventTime}
+      eventCreatedAt={event.created_at}
     />
   )
 }

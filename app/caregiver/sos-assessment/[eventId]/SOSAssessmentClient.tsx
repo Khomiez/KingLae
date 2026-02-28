@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import CaregiverNav from "../../components/CaregiverNav";
 import { createBrowserClient } from "@supabase/ssr";
@@ -12,7 +12,7 @@ interface SOSAssessmentClientProps {
   patient: any;
   device: any;
   age: number | null;
-  eventTime: string;
+  eventCreatedAt: string;
 }
 
 // Default caregiver ID from seed database
@@ -23,11 +23,23 @@ export default function SOSAssessmentClient({
   patient,
   device,
   age,
-  eventTime,
+  eventCreatedAt,
 }: SOSAssessmentClientProps) {
   const router = useRouter();
+  const [eventTime, setEventTime] = useState<string>('');
   const [selectedDecision, setSelectedDecision] = useState<'TRUE_SOS' | 'DOWNGRADED_TO_ASSIST' | null>(null);
   const [caregiverNote, setCaregiverNote] = useState('');
+
+  // Format date on client side to avoid hydration mismatch
+  useEffect(() => {
+    setEventTime(new Date(eventCreatedAt).toLocaleString('th-TH', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }));
+  }, [eventCreatedAt]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
