@@ -5,6 +5,7 @@
 #include "secrets.h"
 
 // --- Hardware Pins ---
+const int redLedPin = 25;       // 🚨 💡 ขาที่ต่อกับ LED สีแดง (สำหรับ SOS)
 const int buttonPinRed = 34;    // 🔴 ปุ่มฉุกเฉิน (SOS)
 const int buttonPinYellow = 26; // 🟡 ปุ่มเรียก Caregiver (ASSIST) - 💡 เพิ่มใหม่ (ใช้ GPIO27 หรือเปลี่ยนตามสะดวก)
 const int buttonPinGreen = 27;  // 🟢 ปุ่ม 4-pin อเนกประสงค์ (GREEN_BTN)
@@ -21,12 +22,15 @@ int lastStateRed = -1;
 int lastStateYellow = HIGH; // ใช้ HIGH เพราะจะใช้ INPUT_PULLUP
 int lastStateGreen = HIGH;  // ใช้ HIGH เพราะจะใช้ INPUT_PULLUP
 int lastStateBlue = HIGH;      // ใช้ HIGH เพราะจะใช้ INPUT_PULLUP
+bool isEmergency = false;       // 💡 ตัวแปรจำลองสถานะว่ากำลังเกิดเหตุฉุกเฉินอยู่หรือไม่
+unsigned long lastRedBlink = 0; // 💡 ตัวแปรเก็บเวลาสำหรับการกะพริบไฟแดง
+bool redLedState = false;       // 💡 สถานะเปิด/ปิดของไฟแดง
 
 unsigned long lastHeartbeat = 0;
 const long heartbeatInterval = 30000; // 30 วินาที
 unsigned long lastReconnectAttempt = 0;
 
-int batteryLevel = 85; // 🔋 สมมติว่าชาร์จแบตมาเต็มแล้วสำหรับการนำเสนอ
+int batteryLevel = 15; // 🔋 สมมติว่าชาร์จแบตมาเต็มแล้วสำหรับการนำเสนอ
 unsigned long lastBatteryBlink = 0;
 bool batteryLedState = false;
 
@@ -110,7 +114,9 @@ void setup() {
   pinMode(buttonPinYellow, INPUT_PULLUP); // ต่อขาเข้า GPIO27 และ GND
   pinMode(buttonPinGreen, INPUT_PULLUP);  // ต่อขาเข้า GPIO26 และ GND
   pinMode(buttonPinBlue, INPUT_PULLUP); // ต่อขาเข้า GPIO14 และ GND
-  
+
+  pinMode(redLedPin, OUTPUT);       // 💡 ตั้งค่าพิน LED สีแดง
+  digitalWrite(redLedPin, LOW);     // 💡 ปิดไฟแดงไว้ก่อน
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
 
@@ -132,6 +138,19 @@ void loop() {
 
   unsigned long now = millis();
 
+  // --- 🚨 💡 Logic ไฟ LED สีแดงกะพริบ (SOS) ---
+  if (isEmergency) {
+    // กะพริบเร็วๆ ทุกๆ 200 มิลลิวินาที (ดูฉุกเฉิน)
+    if (now - lastRedBlink > 200) {
+      lastRedBlink = now;
+      redLedState = !redLedState;
+      digitalWrite(redLedPin, redLedState);
+    }
+  } else {
+    // ถ้าไม่ได้อยู่ในสถานะฉุกเฉิน ให้ปิดไฟแดงทันที
+    digitalWrite(redLedPin, LOW);
+    redLedState = false;
+  }
   // --- LED แสดงสถานะแบตเตอรี่ ---
   if (batteryLevel > 20) {
     digitalWrite(batteryLedPin, HIGH);
@@ -147,8 +166,9 @@ void loop() {
   int currentRed = digitalRead(buttonPinRed);
   if (currentRed != lastStateRed) {
     if (currentRed == HIGH) {
-      Serial.println("สถานะ: 🔴 กดปุ่ม SOS");
-      sendEvent("SOS", "PENDING"); // ➡️ ลง DB event_type = SOS
+      Serial.println("สถานะ: 🔴 กดปุ่ม SOS -> เปิดไฟกะพริบ");
+      isEmergency = true; // 💡 เปิดโหมดฉุกเฉินให้ไฟกะพริบ
+      sendEvent("SOS", "PENDING"); 
     }
     delay(50); // Debounce
     lastStateRed = currentRed;
@@ -157,35 +177,37 @@ void loop() {
   // --- 🟡 ตรวจจับปุ่มสีเหลือง (ASSIST) ---
   int currentYellow = digitalRead(buttonPinYellow);
   if (currentYellow != lastStateYellow) {
-    if (currentYellow == LOW) { // ใช้ LOW เพราะเป็น INPUT_PULLUP
+    if (currentYellow == LOW) { 
       Serial.println("สถานะ: 🟡 กดปุ่ม เรียกทั่วไป");
-      sendEvent("ASSIST", "PENDING"); // ➡️ ลง DB event_type = ASSIST
+      // ไม่เปิดไฟแดงกะพริบ เพราะเป็นการเรียกปกติ
+      sendEvent("ASSIST", "PENDING"); 
     }
-    delay(50); // Debounce
+    delay(50); 
     lastStateYellow = currentYellow;
   }
 
   // --- 🟢 ตรวจจับปุ่มสีเขียว (GREEN_BTN) ---
   int currentGreen = digitalRead(buttonPinGreen);
   if (currentGreen != lastStateGreen) {
-    if (currentGreen == LOW) { // ใช้ LOW เพราะเป็น INPUT_PULLUP
-      Serial.println("สถานะ: 🟢 กดปุ่ม สีเขียว (Context-Aware)");
-      sendEvent("GREEN_BTN", "TRIGGERED"); // ➡️ ส่งให้ Backend เอาไปแปลความหมายต่อ
+    if (currentGreen == LOW) { 
+      Serial.println("สถานะ: 🟢 กดปุ่ม สีเขียว -> ยกเลิก/ยืนยันงาน ปิดไฟแดง");
+      isEmergency = false; // 💡 ปิดโหมดฉุกเฉิน (ไฟแดงหยุดกะพริบ)
+      sendEvent("GREEN_BTN", "TRIGGERED"); 
     }
-    delay(50); // Debounce
+    delay(50); 
     lastStateGreen = currentGreen;
   }
-  
+
   // --- 🔵 จำลอง CAREGIVER ACCEPT (ปุ่มสีน้ำเงิน GPIO14) ---
   int currentBlue = digitalRead(buttonPinBlue);
   if (currentBlue != lastStateBlue) {
-    if (currentBlue == LOW) { // ใช้ LOW เพราะเป็น INPUT_PULLUP
-      Serial.println("สถานะ: 🔵 กดปุ่ม สีน้ำเงิน (จำลอง Caregiver กดรับงานผ่านแอป)");
-      
-      // ส่ง event_type เป็น BLUE_BTN เพื่อให้ Backend ไปจับคู่เงื่อนไข
+    if (currentBlue == LOW) { 
+      Serial.println("สถานะ: 🔵 กดปุ่ม สีน้ำเงิน -> Caregiver รับงาน ปิดไฟแดงกะพริบ");
+      // เมื่อพยาบาลรับงานแล้ว อาจจะให้ไฟแดงหยุดกะพริบ เพื่อบอกคนไข้ว่า "มีคนรับเรื่องแล้วนะ"
+      isEmergency = false; // 💡 ปิดโหมดฉุกเฉิน (ไฟแดงหยุดกะพริบ)
       sendEvent("BLUE_BTN", "TRIGGERED"); 
     }
-    delay(50); // Debounce
+    delay(50); 
     lastStateBlue = currentBlue;
   }
 

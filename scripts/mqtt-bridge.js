@@ -4,13 +4,43 @@ import { createClient } from '@supabase/supabase-js';
 
 // Config from env
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-// 💡 ข้อควรระวัง: ถ้า Supabase เปิด RLS (Row Level Security) ไว้ การใช้ ANON_KEY อาจจะ Insert/Update ไม่เข้า 
-// แนะนำให้ใช้ SERVICE_ROLE_KEY สำหรับสคริปต์ Backend ฝั่ง Server ครับ
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const lineAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const mqttServer = "mqtt://localhost";
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 const client = mqtt.connect(mqttServer);
+
+// --- ฟังก์ชันส่งการแจ้งเตือน LINE ---
+async function sendLineNotification(lineUserId, message) {
+  if (!lineUserId || !lineAccessToken) {
+    if (!lineAccessToken) console.warn('⚠️ LINE_CHANNEL_ACCESS_TOKEN is not set in .env');
+    return;
+  }
+
+  try {
+    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${lineAccessToken}`
+      },
+      body: JSON.stringify({
+        to: lineUserId,
+        messages: [{ type: 'text', text: message }]
+      })
+    });
+    
+    const result = await response.json();
+    if (response.ok) {
+      console.log(`📱 LINE Notification sent to ${lineUserId}`);
+    } else {
+      console.error('❌ LINE API Error:', result);
+    }
+  } catch (error) {
+    console.error('❌ Failed to send LINE notification:', error.message);
+  }
+}
 
 client.on('connect', () => {
   console.log('✅ Connected to MQTT broker');
@@ -32,127 +62,121 @@ client.on('message', async (topic, message) => {
       if (data.battery_level !== undefined) {
         await supabase
           .from('devices')
-          .update({ 
-            battery_level: data.battery_level,
-            last_seen_at: new Date().toISOString()
-          })
+          .update({ battery_level: data.battery_level, last_seen_at: new Date().toISOString() })
           .eq('mac_address', mac);
       }
 
-      // ==========================================
-      // 🔴 🟡 กรณีปุ่ม แดง (SOS) หรือ เหลือง (ASSIST)
-      // ==========================================
-      if (eventType === 'SOS' || eventType === 'ASSIST') {
-        // Insert event ใหม่
-        const { error: eventError } = await supabase
-          .from('events')
-          .insert([{
-            device_mac: mac,
-            event_type: eventType,
-            status: data.status || 'PENDING'
-          }]);
+      // 💡 2. ดึงสถานะปัจจุบันของเครื่อง (State) และข้อมูลผู้ป่วยออกมาก่อนเสมอ
+      const { data: deviceData } = await supabase
+        .from('devices')
+        .select('state, patients(name, relative_line_id)')
+        .eq('mac_address', mac)
+        .single();
 
-        if (eventError) console.error('❌ Error inserting event:', eventError.message);
-        else console.log(`✅ Logged ${eventType} event for ${mac}`);
+      const currentState = deviceData ? deviceData.state : 'IDLE';
+      const patientInfo = deviceData?.patients;
 
-        // อัปเดต State ของเครื่องในตาราง devices
-        const newState = eventType === 'SOS' ? 'EMERGENCY' : 'ASSIST_REQUESTED';
-        await supabase.from('devices').update({ state: newState }).eq('mac_address', mac);
+      // ==========================================
+      // 🔴 กรณีปุ่ม แดง (SOS)
+      // ==========================================
+      if (eventType === 'SOS') {
+        if (currentState === 'IDLE' || currentState === 'MORNING_WINDOW' || currentState === 'GRACE_PERIOD' || currentState === 'ASSIST_REQUESTED') {
+          
+          if (currentState === 'ASSIST_REQUESTED') {
+            await supabase.from('events').update({ status: 'CANCELLED', resolved_at: new Date().toISOString() })
+              .eq('device_mac', mac).eq('status', 'PENDING');
+          }
+
+          await supabase.from('events').insert([{ device_mac: mac, event_type: 'SOS', status: 'PENDING' }]);
+          await supabase.from('devices').update({ state: 'EMERGENCY' }).eq('mac_address', mac);
+          console.log(`🚨 Triggered SOS for ${mac}`);
+
+          // ส่ง LINE Notification
+          if (patientInfo?.relative_line_id) {
+            const msg = `🚨 แจ้งเตือน: ฉุกเฉิน (SOS)\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nอุปกรณ์: ${mac}\nกรุณาตรวจสอบด่วน!`;
+            await sendLineNotification(patientInfo.relative_line_id, msg);
+          }
+        } else {
+          console.log(`⚠️ Ignored SOS: Device is currently busy in state [${currentState}]`);
+        }
       }
 
       // ==========================================
-      // 🟢 กรณีปุ่ม เขียว (GREEN_BTN - ความฉลาดของระบบ)
+      // 🟡 กรณีปุ่ม เหลือง (ASSIST)
+      // ==========================================
+      else if (eventType === 'ASSIST') {
+        if (currentState === 'IDLE' || currentState === 'MORNING_WINDOW' || currentState === 'GRACE_PERIOD') {
+          await supabase.from('events').insert([{ device_mac: mac, event_type: 'ASSIST', status: 'PENDING' }]);
+          await supabase.from('devices').update({ state: 'ASSIST_REQUESTED' }).eq('mac_address', mac);
+          console.log(`🔔 Triggered ASSIST for ${mac}`);
+
+          // ส่ง LINE Notification
+          if (patientInfo?.relative_line_id) {
+            const msg = `🟡 แจ้งเตือน: ขอความช่วยเหลือ (ASSIST)\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nอุปกรณ์: ${mac}`;
+            await sendLineNotification(patientInfo.relative_line_id, msg);
+          }
+        } else {
+          console.log(`⚠️ Ignored ASSIST: Device is currently busy in state [${currentState}]`);
+        }
+      }
+
+      // ==========================================
+      // 🟢 กรณีปุ่ม เขียว (GREEN_BTN)
       // ==========================================
       else if (eventType === 'GREEN_BTN') {
-        // ดึงสถานะปัจจุบันของเครื่องมาเช็กก่อน
-        const { data: deviceData, error: deviceError } = await supabase
-          .from('devices')
-          .select('state')
-          .eq('mac_address', mac)
-          .single();
-
-        if (deviceData) {
-          const currentState = deviceData.state;
-
-          if (currentState === 'EMERGENCY' || currentState === 'ASSIST_REQUESTED') {
-            // ยกเลิกการเรียก (กดปุ่มเขียวเพื่อ Cancel)
-            await supabase.from('events')
-              .update({ status: 'CANCELLED', resolved_at: new Date().toISOString() })
-              .eq('device_mac', mac)
-              .eq('status', 'PENDING');
+        if (currentState === 'EMERGENCY' || currentState === 'ASSIST_REQUESTED') {
+          await supabase.from('events')
+            .update({ status: 'CANCELLED', resolved_at: new Date().toISOString() })
+            .eq('device_mac', mac)
+            .eq('status', 'PENDING');
+          
+          await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
+          console.log(`🛑 Cancelled active alert for ${mac}`);
+        } 
+        else if (currentState === 'CAREGIVER_ON_THE_WAY') {
+          await supabase.from('events')
+            .update({ status: 'RESOLVED', resolved_at: new Date().toISOString() })
+            .eq('device_mac', mac)
+            .eq('status', 'ACKNOWLEDGED');
             
-            await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
-            console.log(`🛑 Cancelled active alert for ${mac}`);
-          } 
-          else if (currentState === 'CAREGIVER_ON_THE_WAY') {
-            // Caregiver มาถึงและกดปุ่มยืนยัน
-            await supabase.from('events')
-              .update({ status: 'RESOLVED', resolved_at: new Date().toISOString() })
-              .eq('device_mac', mac)
-              .eq('status', 'ACKNOWLEDGED');
-              
-            await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
-            console.log(`🩺 Caregiver arrived and resolved case for ${mac}`);
-          }
-          else if (currentState === 'MORNING_WINDOW' || currentState === 'GRACE_PERIOD') {
-            // ยืนยันการตื่นนอนตอนเช้า
-            await supabase.from('events').insert([{
-              device_mac: mac,
-              event_type: 'MORNING_WAKEUP',
-              status: 'RESOLVED',
-              resolved_at: new Date().toISOString()
-            }]);
-            
-            await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
-            console.log(`🌅 Morning check-in successful for ${mac}`);
-          }
-          else if (currentState === 'IDLE') {
-            console.log(`🟢 Green button pressed while IDLE. Ignoring.`);
+          await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
+          console.log(`🩺 Caregiver arrived and resolved case for ${mac}`);
+
+          // ส่ง LINE Notification เมื่อทำงานเสร็จ
+          if (patientInfo?.relative_line_id) {
+            const msg = `✅ แจ้งเตือน: เจ้าหน้าที่เข้าดูแลเรียบร้อยแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: ปลอดภัย (ปกติ)`;
+            await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         }
+        else if (currentState === 'MORNING_WINDOW' || currentState === 'GRACE_PERIOD') {
+          await supabase.from('events').insert([{ device_mac: mac, event_type: 'MORNING_WAKEUP', status: 'RESOLVED', resolved_at: new Date().toISOString() }]);
+          await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
+          console.log(`🌅 Morning check-in successful for ${mac}`);
+        }
       }
+
       // ==========================================
-      // 🔵 กรณีปุ่ม น้ำเงิน (BLUE_BTN - จำลองแอป Caregiver รับงาน)
+      // 🔵 กรณีปุ่ม น้ำเงิน (BLUE_BTN)
       // ==========================================
       else if (eventType === 'BLUE_BTN') {
-        const { data: deviceData } = await supabase
-          .from('devices')
-          .select('state')
-          .eq('mac_address', mac)
-          .single();
+        if (currentState === 'EMERGENCY' || currentState === 'ASSIST_REQUESTED') {
+          await supabase.from('events')
+            .update({ status: 'ACKNOWLEDGED', acknowledged_at: new Date().toISOString() })
+            .eq('device_mac', mac)
+            .eq('status', 'PENDING');
+          
+          await supabase.from('devices').update({ state: 'CAREGIVER_ON_THE_WAY' }).eq('mac_address', mac);
+          console.log(`🏃‍♂️ Caregiver accepted task for ${mac}. On the way!`);
 
-        if (deviceData) {
-          const currentState = deviceData.state;
-
-          // ถ้ามีคนกดเรียก (แดงหรือเหลือง) ค้างอยู่ ถึงจะกดรับงานได้
-          if (currentState === 'EMERGENCY' || currentState === 'ASSIST_REQUESTED') {
-            
-            // 1. เปลี่ยนสถานะ Event เป็น ACKNOWLEDGED (รับทราบงานแล้ว)
-            await supabase.from('events')
-              .update({ 
-                status: 'ACKNOWLEDGED', 
-                acknowledged_at: new Date().toISOString() 
-                // หมายเหตุ: ของจริงต้องใส่ acknowledged_by (UUID ของ Caregiver) ด้วย 
-                // แต่ตอน Demo สามารถข้ามไปก่อน หรือใส่ UUID จำลองได้ครับ
-              })
-              .eq('device_mac', mac)
-              .eq('status', 'PENDING');
-            
-            // 2. เปลี่ยนสถานะอุปกรณ์เป็น CAREGIVER_ON_THE_WAY
-            await supabase.from('devices')
-              .update({ state: 'CAREGIVER_ON_THE_WAY' })
-              .eq('mac_address', mac);
-
-            console.log(`🏃‍♂️ Caregiver accepted task for ${mac}. On the way!`);
-          } else {
-            console.log(`🔵 Blue button pressed, but no active alert for ${mac}.`);
+          // ส่ง LINE Notification เมื่อมีคนกดรับงาน
+          if (patientInfo?.relative_line_id) {
+            const msg = `🏃‍♂️ ข่าวดี: มีเจ้าหน้าที่กดรับงานแล้ว!\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: กำลังเดินทางไปหาครับ`;
+            await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         }
       }
+
     } 
-    // ==========================================
-    // 💓 อัปเดตสถานะ Online/Offline (LWT)
-    // ==========================================
     else if (topic.endsWith('/status')) {
       const mac = topic.split('/')[2];
       const status = payload; 
