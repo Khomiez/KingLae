@@ -10,7 +10,7 @@
     "lint": "eslint",
     "seed": "node scripts/seed.js",
     "db:reset": "node scripts/reset.js",
-    "mqtt-bridge": "node scripts/mqtt_bridge.js"
+    "mqtt-bridge": "node scripts/mqtt-bridge.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
