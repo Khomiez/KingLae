@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CaregiverNav from "../components/CaregiverNav";
+import { useRealtimeEvents } from "../hooks/useRealtimeEvents";
 import { createBrowserClient } from "@supabase/ssr";
 
 type EventData = {
@@ -24,6 +25,7 @@ type EventData = {
 
 export default function ToConfirmPage() {
   const router = useRouter();
+  const { subscribeToEvents, isConnected } = useRealtimeEvents();
   const [event, setEvent] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [supabase] = useState(() => createBrowserClient(
@@ -31,14 +33,113 @@ export default function ToConfirmPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   ));
 
+  // Initial data fetch
+  const fetchInitialData = useCallback(async () => {
+    console.log('🔍 Checking for ACKNOWLEDGED events...');
+
+    // Query with nested patient data through devices
+    const { data: acknowledgedEvent, error: ackError } = await supabase
+      .from('events')
+      .select('*, devices!inner(mac_address, patient_id, state, patients(id, name))')
+      .eq('status', 'ACKNOWLEDGED')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    console.log('🔍 ACKNOWLEDGED query result:', acknowledgedEvent);
+    console.log('🔍 ACKNOWLEDGED query error:', ackError);
+
+    if (acknowledgedEvent) {
+      // Transform data structure to match expected format
+      const transformedEvent = {
+        ...acknowledgedEvent,
+        patients: acknowledgedEvent.devices?.patients,
+      };
+      setEvent(transformedEvent as any);
+      setLoading(false);
+      return;
+    }
+
+    // Check if event was RESOLVED (green button pressed)
+    const { data: resolvedEvent } = await supabase
+      .from('events')
+      .select('id')
+      .eq('status', 'RESOLVED')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (resolvedEvent) {
+      // Redirect to write-report page
+      router.push(`/caregiver/write-report?eventId=${resolvedEvent.id}`);
+      return;
+    }
+
+    setLoading(false);
+  }, [supabase, router]);
+
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+    // Initial check
+    fetchInitialData();
+  }, [fetchInitialData]);
 
-    async function checkEventStatus() {
-      console.log('🔍 Checking for ACKNOWLEDGED events...');
+  // Helper function to fetch full event data with relations
+  const fetchAcknowledgedEvent = useCallback(async (eventId: string) => {
+    const { data: acknowledgedEvent } = await supabase
+      .from('events')
+      .select('*, devices!inner(mac_address, patient_id, state, patients(id, name))')
+      .eq('id', eventId)
+      .single();
 
-      // Query with nested patient data through devices
-      const { data: acknowledgedEvent, error: ackError } = await supabase
+    if (acknowledgedEvent) {
+      const transformedEvent = {
+        ...acknowledgedEvent,
+        patients: acknowledgedEvent.devices?.patients,
+      };
+      setEvent(transformedEvent as any);
+      setLoading(false);
+    }
+  }, [supabase]);
+
+  // Real-time subscription using enhanced hook
+  useEffect(() => {
+    const unsubscribe = subscribeToEvents({
+      statuses: ['ACKNOWLEDGED', 'RESOLVED'],
+      onInsert: (payload) => {
+        console.log('📥 New event inserted:', payload);
+        if (payload.new.status === 'ACKNOWLEDGED') {
+          // Fetch full event data with relations
+          fetchAcknowledgedEvent(payload.new.id);
+        }
+      },
+      onUpdate: (payload) => {
+        console.log('📝 Event updated:', payload);
+        if (payload.new.status === 'RESOLVED') {
+          router.push(`/caregiver/write-report?eventId=${payload.new.id}`);
+        } else if (payload.new.status === 'ACKNOWLEDGED') {
+          // Fetch full event data with relations
+          fetchAcknowledgedEvent(payload.new.id);
+        }
+      },
+    });
+
+    return () => unsubscribe();
+  }, [router, subscribeToEvents, fetchAcknowledgedEvent]);
+
+  // Polling fallback when Realtime is not available
+  useEffect(() => {
+    // Don't poll if Realtime is connected
+    if (isConnected) {
+      console.log('✅ Realtime is connected, skipping polling');
+      return;
+    }
+
+    console.log('⚠️ Realtime not available, using polling fallback');
+
+    // Poll every 2 seconds for ACKNOWLEDGED or RESOLVED events
+    const interval = setInterval(async () => {
+      // Query for ACKNOWLEDGED events
+      const { data: acknowledgedEvent } = await supabase
         .from('events')
         .select('*, devices!inner(mac_address, patient_id, state, patients(id, name))')
         .eq('status', 'ACKNOWLEDGED')
@@ -46,11 +147,7 @@ export default function ToConfirmPage() {
         .limit(1)
         .maybeSingle();
 
-      console.log('🔍 ACKNOWLEDGED query result:', acknowledgedEvent);
-      console.log('🔍 ACKNOWLEDGED query error:', ackError);
-
       if (acknowledgedEvent) {
-        // Transform data structure to match expected format
         const transformedEvent = {
           ...acknowledgedEvent,
           patients: acknowledgedEvent.devices?.patients,
@@ -60,7 +157,7 @@ export default function ToConfirmPage() {
         return;
       }
 
-      // Check if event was RESOLVED (green button pressed)
+      // Check for RESOLVED events
       const { data: resolvedEvent } = await supabase
         .from('events')
         .select('id')
@@ -70,22 +167,15 @@ export default function ToConfirmPage() {
         .maybeSingle();
 
       if (resolvedEvent) {
-        // Redirect to write-report page
         router.push(`/caregiver/write-report?eventId=${resolvedEvent.id}`);
         return;
       }
 
       setLoading(false);
-    }
+    }, 2000);
 
-    // Initial check
-    checkEventStatus();
-
-    // Poll every 2 seconds
-    intervalId = setInterval(checkEventStatus, 2000);
-
-    return () => clearInterval(intervalId);
-  }, [supabase, router]);
+    return () => clearInterval(interval);
+  }, [isConnected, supabase, router]);
 
   if (loading) {
     return (

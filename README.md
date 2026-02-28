@@ -175,6 +175,173 @@ Interactive API testing page available at `/api-test`:
 http://localhost:3000/api-test
 ```
 
+## Caregiver App
+
+The caregiver app is a mobile-first web application for staff to monitor and respond to patient emergencies.
+
+### Pages
+
+| Page | Route | Purpose |
+|------|-------|---------|
+| Home | `/caregiver/home` | Main dashboard showing urgent tasks and patient list |
+| Patient Info | `/caregiver/patient-info` | Patient profile with device status and recent history |
+| To Confirm | `/caregiver/to-confirm` | Confirmation page after acknowledging an event |
+| Write Report | `/caregiver/write-report` | Caregiver notes and completion form |
+| History | `/caregiver/history` | Complete event history with filters |
+
+### Event Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        CAREGIVER APP EVENT FLOW                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. PENDING (New Event)                                                    │
+│     ┌─────────────────┐                                                    │
+│     │ Patient presses │ ────────────────────────────────────────────┐     │
+│     │ SOS/ASSIST btn  │                                              │     │
+│     └─────────────────┘                                              │     │
+│                           ▼                                              │     │
+│     ┌──────────────────────────────────────────────────────────────┐    │     │
+│     │  HOME PAGE                                                  │    │     │
+│     │  • Shows "Urgent Tasks" section                             │    │     │
+│     │  • Live elapsed time counter                                │    │     │
+│     │  • Buttons: [ดูข้อมูลผู้ป่วย] [รับงาน/Acknowledge]         │    │     │
+│     └──────────────────────────────────────────────────────────────┘    │     │
+│                           │                                                  │
+│                           │ Caregiver clicks "รับงาน"                       │
+│                           ▼                                                  │
+│                                                                             │
+│  2. ACKNOWLEDGED (Caregiver on the way)                                   │
+│     ┌──────────────────────────────────────────────────────────────┐     │
+│     │  TO CONFIRM PAGE                                            │     │
+│     │  • Shows patient info                                       │     │
+│     │  • Location status: "อยู่ในพื้นที่บ้านผู้ป่วยแล้ว"        │     │
+│     │  • Instructions: Press green button on device               │     │
+│     │  • Status: "รอยืนยันจากอุปกรณ์..."                         │     │
+│     │  • Real-time monitoring for status change                   │     │
+│     │  • Manual confirmation link if device fails                 │     │
+│     └──────────────────────────────────────────────────────────────┘     │
+│                           │                                                  │
+│                           │ Green button pressed OR manual confirmation     │
+│                           ▼                                                  │
+│                                                                             │
+│  3. RESOLVED (Caregiver arrived, providing care)                           │
+│     ┌──────────────────────────────────────────────────────────────┐     │
+│     │  WRITE REPORT PAGE                                          │     │
+│     │  • Shows patient info                                       │     │
+│     │  • Event type badge (SOS/ASSIST)                            │     │
+│     │  • Caregiver note textarea                                 │     │
+│     │  • Quick tags: #ช่วยพยุง #เข้าห้องน้ำ #อุบัติเหตุ         │     │
+│     │  • Submit button: "บันทึกและปิดงาน"                        │     │
+│     └──────────────────────────────────────────────────────────────┘     │
+│                           │                                                  │
+│                           │ Caregiver submits notes                         │
+│                           ▼                                                  │
+│                                                                             │
+│  4. COMPLETED (Task finished, caregiver note saved)                        │
+│                           │                                                  │
+│                           └──► Redirect to HOME PAGE                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Real-time Features
+
+| Feature | Implementation |
+|---------|---------------|
+| Live event updates | Supabase Realtime subscription to `events` table |
+| Device status | Realtime subscription to `devices` table |
+| Connection indicator | Visual indicator (green/gray) in header |
+| Polling fallback | 2-second interval when Realtime unavailable |
+| Notifications | Browser notifications for new SOS/ASSIST events |
+| Live elapsed time | Updates every second for PENDING events |
+
+### Event Types & Statuses
+
+| Event Type | Button | Priority |
+|------------|--------|----------|
+| `SOS` | Red | 🔴 Emergency - Immediate response required |
+| `ASSIST` | Yellow | 🟡 General assistance - Normal response |
+| `MORNING_WAKEUP` | Green | 🟢 Daily check-in - Informational |
+| `MISSED_CHECKIN` | System | 🟠 Alert - Patient failed to check in |
+
+| Status | Meaning |
+|--------|---------|
+| `PENDING` | New event, awaiting caregiver acknowledgment |
+| `ACKNOWLEDGED` | caregiver accepted, on the way to patient |
+| `RESOLVED` | Caregiver arrived at patient location |
+| `COMPLETED` | Care finished, notes saved |
+| `CANCELLED` | Event cancelled (false alarm, etc.) |
+
+### Navigation
+
+Bottom navigation bar with 4 tabs:
+
+1. **หน้าหลัก (Home)** - Dashboard with urgent tasks and patient list
+2. **ผู้ป่วย (Patients)** - Browse all patients, view details
+3. **บันทึก (Write Report)** - Access caregiver notes form
+4. **ประวัติ (History)** - View complete event history with filters
+
+### Quick Actions
+
+| Action | Location | Result |
+|--------|----------|--------|
+| รับงาน (Acknowledge) | Home page, urgent task card | Event → ACKNOWLEDGED, redirect to To Confirm |
+| ดูข้อมูลผู้ป่วย (View Patient) | Home page, urgent task card | Navigate to Patient Info page |
+| Manual confirmation | To Confirm page footer | Event → RESOLVED, redirect to Write Report |
+| Submit notes | Write Report page | Event → COMPLETED, redirect to Home |
+
+### Real-time Architecture
+
+The caregiver app uses **Supabase Realtime** for instant updates, with a **polling fallback** when Realtime is unavailable.
+
+#### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `CaregiverHomeClient` | `app/caregiver/home/components/` | Main client component with real-time event subscriptions |
+| `CaregiverNav` | `app/caregiver/components/` | Bottom navigation bar |
+| `AcknowledgeButton` | `app/caregiver/components/` | Button to acknowledge events |
+| `EventNotification` | `app/caregiver/components/` | Toast notification system |
+| `ConnectionStatus` | `app/caregiver/components/` | Visual connection indicator |
+
+#### Custom Hooks
+
+| Hook | File | Purpose |
+|------|------|---------|
+| `useRealtimeEvents` | `app/caregiver/hooks/` | Subscribe to Supabase Realtime events and devices |
+| `useEventNotifications` | `app/caregiver/hooks/` | Audio and browser notification management |
+| `useEventNotificationsWithPrompt` | `app/caregiver/hooks/` | Auto-request notification permission on user interaction |
+
+#### Connection States
+
+| State | Indicator | Behavior |
+|-------|-----------|----------|
+| `connecting` | Yellow pulse | Initial connection attempt |
+| `connected` | Green dot | Realtime active, no polling |
+| `unavailable` | Gray dot | Realtime not enabled, using 2s polling fallback |
+| `disconnected` | Red dot | Connection lost, attempting reconnect |
+| `error` | Red dot | Connection error |
+
+#### Enabling Realtime
+
+To enable Supabase Realtime for the caregiver app:
+
+1. Go to Supabase Dashboard → Database → Replication
+2. Enable Realtime for `events` and `devices` tables
+3. Select columns to broadcast (usually all columns)
+
+If Realtime is not enabled, the app automatically falls back to 2-second polling.
+
+#### Audio Notifications
+
+| Event Type | Sound | Behavior |
+|------------|-------|----------|
+| SOS | SOS alert (urgent beep) | Plays twice, requires interaction |
+| ASSIST | Gentle chime | Single notification sound |
+| Mute toggle | - | Located in header, persists during session |
+
 ### 6. Database Seeding
 
 Seed the database with realistic Thai home-care sample data:
