@@ -441,7 +441,7 @@ export default function CaregiverHomeClient({
                       {event.status === 'PENDING' ? (
                         <AcknowledgeButton
                           eventId={event.id}
-                          redirectTo={`/caregiver/to-confirm`}
+                          redirectTo={`/caregiver/sos-assessment/${event.id}`}
                           className="flex-1 bg-[var(--alert-red)] hover:bg-red-600 active:bg-red-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md shadow-red-200 transition-colors flex justify-center items-center gap-2"
                         />
                       ) : (

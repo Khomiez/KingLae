@@ -19,6 +19,11 @@ CREATE TYPE event_status AS ENUM (
   'CANCELLED'
 );
 
+CREATE TYPE triage_decision AS ENUM (
+  'TRUE_SOS',
+  'DOWNGRADED_TO_ASSIST'
+);
+
 CREATE TYPE device_state AS ENUM (
   'IDLE',
   'EMERGENCY',
@@ -91,7 +96,13 @@ CREATE TABLE IF NOT EXISTS events (
   acknowledged_by UUID REFERENCES caregivers(id) ON DELETE SET NULL,
   acknowledged_at TIMESTAMPTZ,
   resolved_at     TIMESTAMPTZ,
-  caregiver_note  TEXT
+  caregiver_note  TEXT,
+  -- Triage fields for SOS events
+  triage_decision triage_decision,
+  triage_by       UUID REFERENCES caregivers(id) ON DELETE SET NULL,
+  triage_at       TIMESTAMPTZ,
+  -- Flag to quickly identify confirmed true emergencies
+  is_true_sos     BOOLEAN DEFAULT false
 );
 
 -- ============================================================
@@ -102,3 +113,27 @@ CREATE INDEX IF NOT EXISTS idx_events_device_mac      ON events(device_mac);
 CREATE INDEX IF NOT EXISTS idx_events_status          ON events(status);
 CREATE INDEX IF NOT EXISTS idx_events_type            ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_acknowledged_by ON events(acknowledged_by);
+CREATE INDEX IF NOT EXISTS idx_events_triage_decision ON events(triage_decision);
+CREATE INDEX IF NOT EXISTS idx_events_triage_by       ON events(triage_by);
+CREATE INDEX IF NOT EXISTS idx_events_is_true_sos     ON events(is_true_sos);
+
+-- ============================================================
+-- MIGRATION: Add SOS triage fields to existing events table
+-- ============================================================
+-- Run this if updating an existing database:
+
+-- DO $$ BEGIN
+--   -- Create enum type if not exists
+--   CREATE TYPE triage_decision AS ENUM ('TRUE_SOS', 'DOWNGRADED_TO_ASSIST');
+--
+--   -- Add triage columns if they don't exist
+--   ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_decision triage_decision;
+--   ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_by UUID REFERENCES caregivers(id) ON DELETE SET NULL;
+--   ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_at TIMESTAMPTZ;
+--   ALTER TABLE events ADD COLUMN IF NOT EXISTS is_true_sos BOOLEAN DEFAULT false;
+--
+--   -- Create indexes
+--   CREATE INDEX IF NOT EXISTS idx_events_triage_decision ON events(triage_decision);
+--   CREATE INDEX IF NOT EXISTS idx_events_triage_by ON events(triage_by);
+--   CREATE INDEX IF NOT EXISTS idx_events_is_true_sos ON events(is_true_sos);
+-- END $$;
