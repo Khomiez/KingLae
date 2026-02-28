@@ -3,6 +3,28 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --medical-blue: #0ea5e9;
+  --medical-blue-dark: #0284c7;
+  --medical-bg: #f8fafc;
+  --alert-red: #ef4444;
+  --alert-yellow: #f59e0b;
+  --success-green: #10b981;
+  --status-green: #22c55e;
+  --clinical-white: #f8fafc;
+  --text-primary: #334155;
+  --text-secondary: #64748b;
+  /* Caregiver colors */
+  --primary: #1a73e8;
+  --primary-dark: #1557b0;
+  --secondary: #e8f0fe;
+  --accent: #f9ab00;
+  --background-light: #f8fafc;
+  --surface-light: #ffffff;
+  /* Patient info colors */
+  --primary-blue: #0ea5e9;
+  --secondary-slate: #f1f5f9;
+  --text-main: #0f172a;
+  --text-sub: #64748b;
 }
 
 @theme inline {
@@ -22,5 +44,87 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sarabun), var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+.material-symbols-outlined.filled {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/* Safe area utilities for mobile devices */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 20px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+
+/* No scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom animations for to-confirm page */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse-green {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 15px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.spin-slow {
+  animation: spin 3s linear infinite;
+}
+
+.device-shadow {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.glow-effect {
+  box-shadow: 0 0 15px 5px rgba(34, 197, 94, 0.6);
+  animation: pulse-green 2s infinite;
+}
+
+.card-shadow {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05),
+    0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.ios-shadow {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05),
+    0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }

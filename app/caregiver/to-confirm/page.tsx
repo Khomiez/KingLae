@@ -1,0 +1,105 @@
+import Link from "next/link";
+import CaregiverNav from "../components/CaregiverNav";
+
+export default function ToConfirmPage() {
+  return (
+    <div className="bg-gray-50 h-screen flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl relative">
+      {/* Location Status Bar */}
+      <div className="bg-[var(--status-green)] text-white px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 shadow-sm z-10">
+        <span className="material-symbols-outlined text-[1.2rem] filled">
+          location_on
+        </span>
+        อยู่ในพื้นที่บ้านผู้ป่วยแล้ว
+      </div>
+
+      {/* Header */}
+      <header className="bg-white px-6 py-4 border-b border-gray-100 flex justify-between items-center z-10">
+        <h1 className="text-xl font-bold text-[var(--medical-blue-dark)] flex items-center gap-2">
+          <span className="material-symbols-outlined text-3xl">medical_services</span>
+          CareLink
+        </h1>
+        <button className="text-gray-400 hover:text-[var(--medical-blue)]">
+          <span className="material-symbols-outlined">notifications</span>
+        </button>
+      </header>
+
+      <main className="flex-1 flex flex-col items-center px-6 py-6 overflow-y-auto bg-white">
+        {/* Patient Info Card */}
+        <div className="w-full bg-blue-50 border border-blue-100 rounded-xl p-4 mb-8 flex items-start gap-4">
+          <div className="bg-blue-200 rounded-full p-2 text-[var(--medical-blue-dark)]">
+            <span className="material-symbols-outlined text-3xl">person</span>
+          </div>
+          <div>
+            <p className="text-sm text-[var(--text-secondary)]">ผู้ป่วย</p>
+            <h2 className="text-lg font-bold text-[var(--text-primary)]">
+              คุณตา สมชาย
+            </h2>
+            <div className="flex items-center gap-1 text-sm text-[var(--medical-blue-dark)] mt-1 font-medium">
+              <span className="material-symbols-outlined text-base">bed</span>
+              เตียง 04
+            </div>
+          </div>
+        </div>
+
+        {/* Instructions */}
+        <div className="text-center mb-8">
+          <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-3">
+            ยืนยันการเริ่มดูแล
+          </h3>
+          <p className="text-[var(--text-secondary)] leading-relaxed">
+            กรุณากด{" "}
+            <span className="text-[var(--status-green)] font-bold">ปุ่มสีเขียว</span>{" "}
+            บนตัวอุปกรณ์ที่ข้างเตียง
+            <br />
+            เพื่อยืนยันการเข้าปฏิบัติงาน
+          </p>
+        </div>
+
+        {/* Device Visual */}
+        <div className="relative w-48 h-48 mb-8 flex items-center justify-center">
+          <div className="w-40 h-56 bg-white border border-gray-200 rounded-[2rem] device-shadow flex flex-col items-center justify-between py-6 relative z-0">
+            {/* Screen */}
+            <div className="w-28 h-16 bg-gray-100 rounded-xl mb-4 flex items-center justify-center border border-gray-200">
+              <span className="material-symbols-outlined text-gray-400">wifi</span>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex flex-col gap-3 w-full items-center">
+              <div className="w-12 h-6 bg-red-200 rounded-full border border-red-300"></div>
+              <div className="w-12 h-6 bg-yellow-200 rounded-full border border-yellow-300"></div>
+              <div className="w-14 h-14 bg-green-500 rounded-full border-4 border-green-200 glow-effect flex items-center justify-center cursor-pointer transform scale-110">
+                <span className="material-symbols-outlined text-white text-2xl font-bold">
+                  check
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Animated circles */}
+          <div className="absolute -z-10 w-64 h-64 border border-blue-100 rounded-full animate-[ping_3s_linear_infinite] opacity-50"></div>
+          <div className="absolute -z-10 w-56 h-56 border border-blue-100 rounded-full animate-[ping_3s_linear_infinite_0.5s] opacity-60"></div>
+        </div>
+
+        {/* Waiting Status */}
+        <div className="flex flex-col items-center justify-center gap-3 mb-8">
+          <div className="flex items-center gap-2 text-[var(--medical-blue)] font-medium bg-blue-50 px-4 py-2 rounded-full animate-pulse">
+            <span className="material-symbols-outlined text-xl spin-slow">
+              sync
+            </span>
+            รอยืนยันจากอุปกรณ์...
+          </div>
+        </div>
+
+        {/* Manual Confirmation Link */}
+        <div className="mt-auto w-full text-center pb-4">
+          <button className="text-gray-400 text-sm underline hover:text-gray-600 transition-colors">
+            หากอุปกรณ์ขัดข้อง กดเพื่อยืนยันด้วยตนเอง
+          </button>
+        </div>
+      </main>
+
+      {/* Bottom Navigation */}
+      <CaregiverNav />
+    </div>
+  );
+}
