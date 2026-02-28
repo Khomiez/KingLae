@@ -97,17 +97,20 @@ async function buildTodayHistorySummary() {
   const PATIENT_ID = "10000000-0000-0000-0000-000000000001";
 
   const { data: rows, error } = await supabase
-    .from("events")
-    .select(`
-      created_at,
-      event_type,
-      devices!inner (
-        patient_id,
-        patients!inner (
-          name
-        )
+  .from("events")
+  .select(`
+    created_at,
+    event_type,
+    caregivers (
+      name
+    ),
+    devices!inner (
+      patient_id,
+      patients!inner (
+        name
       )
-    `)
+    )
+  `)
     .eq("devices.patient_id", PATIENT_ID)
     .gte("created_at", startIso)
     .lte("created_at", endIso)
@@ -190,18 +193,20 @@ function buildTodayTimeline(
   events: {
     created_at: string;
     event_type: string;
+    caregivers?: { name: string } | null;
   }[]
 ) {
   return events.map((event) => {
     const time = formatTimeInThai(event.created_at);
+    const caregiverName = event.caregivers?.name ?? "ยังไม่มีผู้รับเรื่อง";
 
     switch (event.event_type) {
       case "MORNING_WAKEUP":
         return `${time} 🌅 ผู้ป่วยตื่นนอน (กดปุ่มสีเขียว)`;
       case "SOS":
-        return `${time} 🆘 ผู้ป่วยกดปุ่ม SOS (สีแดง)`;
+        return `${time} 🆘 ผู้ป่วยกดปุ่ม SOS (สีแดง) → ผู้ดูแล: ${caregiverName}`;
       case "ASSIST":
-        return `${time} 🚨 ผู้ป่วยขอความช่วยเหลือ (สีเหลือง)`;
+        return `${time} 🟡 ผู้ป่วยขอความช่วยเหลือ (สีเหลือง) → ผู้ดูแล: ${caregiverName}`;
       case "MISSED_CHECKIN":
         return `${time} ⚠️ ผู้ป่วยไม่กดปุ่มตามเวลาที่กำหนด`;
       default:
