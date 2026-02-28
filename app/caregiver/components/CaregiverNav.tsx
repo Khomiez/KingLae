@@ -12,17 +12,17 @@ const navItems = [
   {
     href: "/caregiver/patient-info",
     icon: "person",
-    label: "ข้อมูลผู้ป่วย",
-  },
-  {
-    href: "/caregiver/to-confirm",
-    icon: "fact_check",
-    label: "ยืนยัน",
+    label: "ผู้ป่วย",
   },
   {
     href: "/caregiver/write-report",
     icon: "edit_note",
     label: "บันทึก",
+  },
+  {
+    href: "/caregiver/history",
+    icon: "history",
+    label: "ประวัติ",
   },
 ];
 

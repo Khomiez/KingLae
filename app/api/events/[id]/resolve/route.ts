@@ -3,12 +3,15 @@ import { createServerClient } from '@/lib/supabase-server'
 
 type Params = { params: Promise<{ id: string }> }
 
-export async function PATCH(req: NextRequest, { params }: Params) {
+async function resolveEvent(req: NextRequest, id: string) {
+  const body = await req.json()
+  const { caregiver_note, notes } = body
+  const finalNote = caregiver_note ?? notes ?? null
+
+  const supabase = createServerClient()
   const { id } = await params
   const body = await req.json()
   const { caregiver_note } = body
-
-  const supabase = createServerClient()
 
   // Verify event exists and is ACKNOWLEDGED
   const { data: existing, error: fetchError } = await supabase
@@ -27,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .update({
       status: 'RESOLVED',
       resolved_at: new Date().toISOString(),
-      caregiver_note: caregiver_note ?? null,
+      caregiver_note: finalNote,
     })
     .eq('id', id)
     .select()
@@ -42,4 +45,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .eq('mac_address', existing.device_mac)
 
   return NextResponse.json(data)
+}
+
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { id } = await params
+  return resolveEvent(req, id)
+}
+
+export async function POST(req: NextRequest, { params }: Params) {
+  const { id } = await params
+  return resolveEvent(req, id)
 }

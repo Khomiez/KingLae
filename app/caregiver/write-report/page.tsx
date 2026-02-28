@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import CaregiverNav from "../components/CaregiverNav";
+import { useRouter } from "next/navigation";
 
 const quickTags = [
   { id: "support", label: "#ช่วยพยุง" },
@@ -11,8 +12,55 @@ const quickTags = [
   { id: "error", label: "#แจ้งเตือนผิดพลาด" },
 ];
 
-export default function WriteReportPage() {
+type EventData = {
+  id: string;
+  event_type: string;
+  created_at: string;
+  status: string;
+  devices: {
+    mac_address: string;
+    patient_id: string;
+  };
+  patients: {
+    id: string;
+    name: string;
+    room_number: string;
+    bed_number: string;
+  };
+};
+
+export default function WriteReportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ eventId?: string }>;
+}) {
+  const router = useRouter();
   const [caregiverNote, setCaregiverNote] = useState<string>("");
+  const [eventData, setEventData] = useState<EventData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    async function fetchEventData() {
+      const params = await searchParams;
+      const eventId = params.eventId;
+
+      if (eventId) {
+        try {
+          const response = await fetch(`/api/events/${eventId}`);
+          if (response.ok) {
+            const data = await response.json();
+            setEventData(data);
+          }
+        } catch (error) {
+          console.error('Failed to fetch event:', error);
+        }
+      }
+      setLoading(false);
+    }
+
+    fetchEventData();
+  }, [searchParams]);
 
   const handleTagClick = (tag: string) => {
     const tagText = tag.replace("#", "");
@@ -23,6 +71,71 @@ export default function WriteReportPage() {
       return tagText;
     });
   };
+
+  const handleSubmit = async () => {
+    if (!eventData) return;
+
+    setSubmitting(true);
+    try {
+      // Update event status to RESOLVED with notes
+      const response = await fetch(`/api/events/${eventData.id}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: caregiverNote }),
+      });
+
+      if (response.ok) {
+        router.push('/caregiver/home');
+      } else {
+        alert('บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่');
+      }
+    } catch (error) {
+      console.error('Failed to submit report:', error);
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-500">กำลังโหลดข้อมูล...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!eventData) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-50">
+        <span className="material-symbols-outlined text-6xl text-gray-300 mb-4">
+          edit_note
+        </span>
+        <h3 className="text-xl font-semibold text-gray-700 mb-2">
+          ไม่พบข้อมูลเหตุการณ์
+        </h3>
+        <p className="text-gray-500 mb-6">
+          หน้านี้สำหรับบันทึกการดูแลผู้ป่วย
+          <br />
+          กรุณาเข้าผ่านหน้าหลักเพื่อรับงาน
+        </p>
+        <Link
+          href="/caregiver/home"
+          className="bg-blue-600 text-white font-semibold py-3 px-6 rounded-xl hover:bg-blue-700 transition-colors"
+        >
+          กลับหน้าหลัก
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gray-50">
@@ -75,14 +188,20 @@ export default function WriteReportPage() {
               </div>
               <div>
                 <h2 className="text-lg font-bold text-gray-800">
-                  คุณตา สมชาย
+                  {eventData.patients?.name}
                 </h2>
-                <p className="text-sm text-gray-500">ห้อง 104 • เตียง 2</p>
+                <p className="text-sm text-gray-500">
+                  ห้อง {eventData.patients?.room_number} • เตียง {eventData.patients?.bed_number}
+                </p>
               </div>
             </div>
-            <span className="inline-flex items-center gap-1 bg-red-50 text-red-600 px-2.5 py-1 rounded-full text-xs font-bold border border-red-100 animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span>
-              ฉุกเฉิน (SOS)
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${
+              eventData.event_type === 'SOS'
+                ? 'bg-red-50 text-red-600 border-red-100 animate-pulse'
+                : 'bg-yellow-50 text-yellow-600 border-yellow-100'
+            }`}>
+              <span className="w-2 h-2 rounded-full bg-current"></span>
+              {eventData.event_type === 'SOS' ? 'ฉุกเฉิน (SOS)' : 'ช่วยเหลือ (ASSIST)'}
             </span>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
@@ -94,7 +213,7 @@ export default function WriteReportPage() {
                 <span className="material-symbols-outlined text-sm">
                   medical_services
                 </span>
-                กำลังดูแล (Arrived)
+                {eventData.status === 'ACKNOWLEDGED' ? 'กำลังดูแล (Arrived)' : eventData.status}
               </span>
             </div>
             <div className="text-right">
@@ -102,7 +221,7 @@ export default function WriteReportPage() {
                 เวลาที่เกิดเหตุ
               </span>
               <span className="block text-gray-700 font-medium mt-0.5">
-                09:30 น.
+                {formatTime(eventData.created_at)} น.
               </span>
             </div>
           </div>
@@ -152,13 +271,14 @@ export default function WriteReportPage() {
 
         {/* Submit Button */}
         <div className="mt-8">
-          <Link
-            href="/caregiver/home"
-            className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-lg"
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span className="material-symbols-outlined">check_circle</span>
-            บันทึกและปิดงาน
-          </Link>
+            {submitting ? 'กำลังบันทึก...' : 'บันทึกและปิดงาน'}
+          </button>
           <p className="text-center text-xs text-gray-400 mt-3">
             การกดปุ่มนี้จะเปลี่ยนสถานะเป็น{" "}
             <span className="font-bold text-gray-500">RESOLVED</span>
@@ -168,6 +288,7 @@ export default function WriteReportPage() {
 
       {/* Bottom Navigation */}
       <CaregiverNav />
+      <div className="h-6 w-full bg-white fixed bottom-0 z-40 pointer-events-none"></div>
     </div>
   );
 }

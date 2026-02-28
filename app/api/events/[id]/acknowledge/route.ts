@@ -3,14 +3,9 @@ import { createServerClient } from '@/lib/supabase-server'
 
 type Params = { params: Promise<{ id: string }> }
 
-export async function PATCH(req: NextRequest, { params }: Params) {
-  const { id } = await params
+async function acknowledgeEvent(req: NextRequest, id: string) {
   const body = await req.json()
   const { caregiver_id } = body
-
-  if (!caregiver_id) {
-    return NextResponse.json({ error: 'caregiver_id is required' }, { status: 400 })
-  }
 
   const supabase = createServerClient()
 
@@ -30,7 +25,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .from('events')
     .update({
       status: 'ACKNOWLEDGED',
-      acknowledged_by: caregiver_id,
+      acknowledged_by: caregiver_id ?? null,
       acknowledged_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -46,4 +41,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .eq('mac_address', data.device_mac)
 
   return NextResponse.json(data)
+}
+
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { id } = await params
+  return acknowledgeEvent(req, id)
+}
+
+export async function POST(req: NextRequest, { params }: Params) {
+  const { id } = await params
+  return acknowledgeEvent(req, id)
 }

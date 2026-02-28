@@ -1,7 +1,56 @@
 import Link from "next/link";
 import CaregiverNav from "../components/CaregiverNav";
+import { createServerClient } from "@/lib/supabase-server";
 
-export default function ToConfirmPage() {
+async function getPendingEvent() {
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from('events')
+    .select('*, devices!inner(mac_address, patient_id, state), patients!inner(id, name, room_number, bed_number)')
+    .eq('status', 'ACKNOWLEDGED')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  return data;
+}
+
+export default async function ToConfirmPage() {
+  const event = await getPendingEvent();
+
+  if (!event) {
+    return (
+      <div className="bg-gray-50 h-screen flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl relative">
+        <header className="bg-white px-6 py-4 border-b border-gray-100 flex justify-between items-center z-10">
+          <h1 className="text-xl font-bold text-[var(--medical-blue-dark)] flex items-center gap-2">
+            <span className="material-symbols-outlined text-3xl">medical_services</span>
+            CareLink
+          </h1>
+        </header>
+
+        <main className="flex-1 flex flex-col items-center justify-center px-6 bg-white">
+          <span className="material-symbols-outlined text-6xl text-green-500 mb-4">
+            check_circle
+          </span>
+          <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
+            ไม่มีงานที่รอการยืนยัน
+          </h3>
+          <p className="text-[var(--text-secondary)] text-center mb-6">
+            ขณะนี้ไม่มีเหตุการณ์ที่ต้องยืนยัน
+          </p>
+          <Link
+            href="/caregiver/home"
+            className="bg-[var(--primary-blue)] text-white font-semibold py-3 px-6 rounded-xl hover:bg-blue-600 transition-colors"
+          >
+            กลับหน้าหลัก
+          </Link>
+        </main>
+
+        <CaregiverNav />
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gray-50 h-screen flex flex-col overflow-hidden max-w-md mx-auto shadow-2xl relative">
       {/* Location Status Bar */}
@@ -32,11 +81,11 @@ export default function ToConfirmPage() {
           <div>
             <p className="text-sm text-[var(--text-secondary)]">ผู้ป่วย</p>
             <h2 className="text-lg font-bold text-[var(--text-primary)]">
-              คุณตา สมชาย
+              {event.patients?.name}
             </h2>
             <div className="flex items-center gap-1 text-sm text-[var(--medical-blue-dark)] mt-1 font-medium">
               <span className="material-symbols-outlined text-base">bed</span>
-              เตียง 04
+              เตียง {event.patients?.bed_number} • ห้อง {event.patients?.room_number}
             </div>
           </div>
         </div>
@@ -92,9 +141,12 @@ export default function ToConfirmPage() {
 
         {/* Manual Confirmation Link */}
         <div className="mt-auto w-full text-center pb-4">
-          <button className="text-gray-400 text-sm underline hover:text-gray-600 transition-colors">
+          <Link
+            href={`/caregiver/write-report?eventId=${event.id}`}
+            className="text-gray-400 text-sm underline hover:text-gray-600 transition-colors"
+          >
             หากอุปกรณ์ขัดข้อง กดเพื่อยืนยันด้วยตนเอง
-          </button>
+          </Link>
         </div>
       </main>
 
