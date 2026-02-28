@@ -94,7 +94,7 @@ client.on('message', async (topic, message) => {
 
           // ส่ง LINE Notification
           if (patientInfo?.relative_line_id) {
-            const msg = `🚨 แจ้งเตือนด่วน: คุณ ${patientInfo.name || 'ผู้ป่วย'} ต้องการความช่วยเหลือฉุกเฉิน (SOS)!\n\nกรุณาตรวจสอบในระบบหรือติดต่อผู้ป่วยทันทีครับ`;
+            const msg = `🚨 แจ้งเตือนฉุกเฉิน (SOS)\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nเวลา: ${timeStr}\n\nกรุณาติดต่อผู้ป่วยทันที หรือรอรับการติดต่อจากเจ้าหน้าที่ครับ`;
             await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         } else {
@@ -113,7 +113,7 @@ client.on('message', async (topic, message) => {
 
           // ส่ง LINE Notification
           if (patientInfo?.relative_line_id) {
-            const msg = `🟡 แจ้งเตือน: คุณ ${patientInfo.name || 'ผู้ป่วย'} ต้องการความช่วยเหลือทั่วไป (ASSIST)\n\nขณะนี้ระบบกำลังประสานงานเจ้าหน้าที่ให้ครับ`;
+            const msg = `🟡 แจ้งเตือน: ผู้ป่วยต้องการความช่วยเหลือ\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nเวลา: ${timeStr}\n\nระบบกำลังประสานงานเจ้าหน้าที่ให้เร็วที่สุดครับ`;
             await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         } else {
@@ -153,9 +153,9 @@ client.on('message', async (topic, message) => {
           await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
           console.log(`🩺 Caregiver arrived and resolved case for ${mac}`);
 
-          // ส่ง LINE Notification เมื่อทำงานเสร็จ
+          // ส่ง LINE Notification เมื่อเจ้าหน้าที่มาถึง
           if (patientInfo?.relative_line_id) {
-            const msg = `🩺 แจ้งเตือน: เจ้าหน้าที่มาถึงแล้ว\n\nคุณ ${caregiverName} เดินทางถึงคุณ ${patientInfo.name || 'ผู้ป่วย'} แล้วและกำลังดำเนินการดูแลครับ`;
+            const msg = `🩺 เจ้าหน้าที่มาถึงแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nเจ้าหน้าที่: ${caregiverName}\nเวลา: ${timeStr}\n\nเจ้าหน้าที่กำลังดำเนินการดูแลผู้ป่วยครับ`;
             await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         }
@@ -169,35 +169,10 @@ client.on('message', async (topic, message) => {
       // ==========================================
       // 🔵 กรณีปุ่ม น้ำเงิน (BLUE_BTN)
       // ==========================================
+      // REMOVED: Caregivers should accept tasks via the app (API)
+      // Physical BLUE button is disabled to ensure we know which caregiver accepted
       else if (eventType === 'BLUE_BTN') {
-        if (currentState === 'EMERGENCY' || currentState === 'ASSIST_REQUESTED') {
-          // ดึงชื่อ Caregiver (สำหรับ Demo ดึงคนแรกในตารางมาแสดง)
-          const { data: caregiver } = await supabase
-            .from('caregivers')
-            .select('id, name')
-            .limit(1)
-            .single();
-
-          const caregiverName = caregiver?.name || 'เจ้าหน้าที่ KingLae';
-
-          await supabase.from('events')
-            .update({ 
-              status: 'ACKNOWLEDGED', 
-              acknowledged_at: new Date().toISOString(),
-              acknowledged_by: caregiver?.id
-            })
-            .eq('device_mac', mac)
-            .eq('status', 'PENDING');
-          
-          await supabase.from('devices').update({ state: 'CAREGIVER_ON_THE_WAY' }).eq('mac_address', mac);
-          console.log(`🏃‍♂️ ${caregiverName} accepted task for ${mac}`);
-
-          // ส่ง LINE Notification เมื่อมีคนกดรับงาน
-          if (patientInfo?.relative_line_id) {
-            const msg = `🏃‍♂️ รับทราบเหตุ: เจ้าหน้าที่กำลังเดินทาง!\n\nคุณ ${caregiverName} ได้กดรับแจ้งเหตุของ คุณ ${patientInfo.name || 'ผู้ป่วย'} แล้วเมื่อเวลา ${timeStr} น. และกำลังเร่งเดินทางไปหาครับ`;
-            await sendLineNotification(patientInfo.relative_line_id, msg);
-          }
-        }
+        console.log(`⚠️ BLUE_BTN pressed - Caregivers should accept via the app, not physical button`);
       }
 
     } 

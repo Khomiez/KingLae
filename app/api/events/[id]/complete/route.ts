@@ -83,7 +83,7 @@ async function completeEvent(req: NextRequest, id: string) {
 
   // Send LINE notification when caregiver completes the report
   if (patientInfo?.relative_line_id) {
-    const msg = `✅ แจ้งเตือน: เจ้าหน้าที่ทำการดูแลเสร็จสิ้นแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: ปลอดภัย (อุปกรณ์พร้อมใช้งาน)`;
+    const msg = `✅ การดูแลเสร็จสิ้นแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nเวลา: ${new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}\n\nสถานะ: ปลอดภัย อุปกรณ์พร้อมใช้งานครับ`;
     console.log('📱 Sending LINE notification to:', patientInfo.relative_line_id)
     await sendLineNotification(patientInfo.relative_line_id, msg);
   } else {

@@ -88,7 +88,7 @@ async function acknowledgeEvent(req: NextRequest, id: string) {
 
   // Send LINE notification when caregiver accepts the task (same as blue button)
   if (patientInfo?.relative_line_id) {
-    const msg = `🏃‍♂️ ข่าวดี: มีเจ้าหน้าที่กดรับงานแล้ว!\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: กำลังเดินทางไปหาครับ`;
+    const msg = `🏃‍♂️ เจ้าหน้าที่รับงานแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nเวลา: ${new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}\n\nเจ้าหน้าที่กำลังเดินทางไปหาผู้ป่วยครับ`;
     console.log('📱 Sending LINE notification to:', patientInfo.relative_line_id)
     await sendLineNotification(patientInfo.relative_line_id, msg);
   } else {
