@@ -120,20 +120,19 @@ CREATE INDEX IF NOT EXISTS idx_events_is_true_sos     ON events(is_true_sos);
 -- ============================================================
 -- MIGRATION: Add SOS triage fields to existing events table
 -- ============================================================
--- Run this if updating an existing database:
+-- Run these statements in order if updating an existing database:
+-- NOTE: Run each statement separately in the Supabase SQL Editor
 
--- DO $$ BEGIN
---   -- Create enum type if not exists
---   CREATE TYPE triage_decision AS ENUM ('TRUE_SOS', 'DOWNGRADED_TO_ASSIST');
---
---   -- Add triage columns if they don't exist
---   ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_decision triage_decision;
---   ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_by UUID REFERENCES caregivers(id) ON DELETE SET NULL;
---   ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_at TIMESTAMPTZ;
---   ALTER TABLE events ADD COLUMN IF NOT EXISTS is_true_sos BOOLEAN DEFAULT false;
---
---   -- Create indexes
---   CREATE INDEX IF NOT EXISTS idx_events_triage_decision ON events(triage_decision);
---   CREATE INDEX IF NOT EXISTS idx_events_triage_by ON events(triage_by);
---   CREATE INDEX IF NOT EXISTS idx_events_is_true_sos ON events(is_true_sos);
--- END $$;
+-- Step 1: Create the triage_decision enum type
+CREATE TYPE triage_decision AS ENUM ('TRUE_SOS', 'DOWNGRADED_TO_ASSIST');
+
+-- Step 2: Add triage columns to events table
+ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_decision triage_decision;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_by UUID REFERENCES caregivers(id) ON DELETE SET NULL;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS triage_at TIMESTAMPTZ;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS is_true_sos BOOLEAN DEFAULT false;
+
+-- Step 3: Create indexes for triage fields
+CREATE INDEX IF NOT EXISTS idx_events_triage_decision ON events(triage_decision);
+CREATE INDEX IF NOT EXISTS idx_events_triage_by ON events(triage_by);
+CREATE INDEX IF NOT EXISTS idx_events_is_true_sos ON events(is_true_sos);

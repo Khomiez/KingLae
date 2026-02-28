@@ -12,12 +12,19 @@ interface TriageRequestBody {
 async function sendLineNotification(lineUserId: string, message: string) {
   const lineAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   console.log('📱 LINE CHANNEL ACCESS TOKEN exists:', !!lineAccessToken)
-  if (!lineUserId || !lineAccessToken) {
-    if (!lineAccessToken) console.warn('⚠️ LINE_CHANNEL_ACCESS_TOKEN is not set in .env');
+
+  if (!lineUserId) {
+    console.warn('⚠️ No LINE user ID provided, skipping notification');
+    return;
+  }
+
+  if (!lineAccessToken) {
+    console.warn('⚠️ LINE_CHANNEL_ACCESS_TOKEN is not set in .env');
     return;
   }
 
   try {
+    console.log('📱 Sending LINE message:', { userId: lineUserId, messageLength: message.length });
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
       headers: {
@@ -32,9 +39,9 @@ async function sendLineNotification(lineUserId: string, message: string) {
 
     const result = await response.json();
     if (response.ok) {
-      console.log(`📱 LINE Notification sent to ${lineUserId}`);
+      console.log(`✅ LINE Notification sent successfully to ${lineUserId}`);
     } else {
-      console.error('❌ LINE API Error:', result);
+      console.error('❌ LINE API Error:', JSON.stringify(result, null, 2));
     }
   } catch (error: any) {
     console.error('❌ Failed to send LINE notification:', error.message);
@@ -82,11 +89,21 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single()
 
   if (fetchError || !event) {
+    console.error('❌ Event fetch error:', fetchError);
     return NextResponse.json({ error: 'Event not found' }, { status: 404 })
   }
 
+  console.log('📋 Event fetched:', {
+    id: event.id,
+    event_type: event.event_type,
+    status: event.status,
+    has_device: !!event.devices,
+    has_patient: !!event.devices?.patients,
+  });
+
   // Check if already triaged
   if (event.triage_decision) {
+    console.log('⚠️ Event already triaged:', event.triage_decision);
     return NextResponse.json(
       { error: 'Event has already been triaged', event },
       { status: 409 }
@@ -110,6 +127,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const now = new Date().toISOString()
+  const timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+
+  // Sanitize caregiver note for LINE messages
+  const sanitizeNote = (note: string | undefined): string => {
+    if (!note) return '-'
+    // Remove newlines and limit length
+    return note.replace(/[\r\n]+/g, ' ').trim().slice(0, 100)
+  }
+
   let updateData: any = {
     triage_decision: decision,
     triage_by: caregiver_id,
@@ -119,6 +145,8 @@ export async function POST(req: NextRequest, { params }: Params) {
   let redirectUrl: string = ''
   let lineMessage = ''
 
+  const patientName = event.devices?.patients?.name || 'ไม่ระบุชื่อ'
+
   if (decision === 'TRUE_SOS') {
     // Confirm as true emergency - complete the event
     updateData.status = 'COMPLETED'
@@ -127,14 +155,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     updateData.caregiver_note = caregiver_note
     deviceState = 'IDLE'
     redirectUrl = `/caregiver/home?completed=true&eventId=${id}`
-    lineMessage = `✅ ยืนยันเหตุฉุกเฉินจริง (SOS)\nผู้ป่วย: ${event.devices?.patients?.name || 'ไม่ระบุชื่อ'}\nเจ้าหน้าที่: ${caregiver_note}\nเวลา: ${new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}\n\nสถานะ: เหตุฉุกเฉินจริง ดำเนินการแล้ว`
+    lineMessage = `✅ ยืนยันเหตุฉุกเฉินจริง
+ผู้ป่วย: ${patientName}
+บันทึก: ${sanitizeNote(caregiver_note)}
+เวลา: ${timeStr}
+
+สถานะ: เหตุฉุกเฉินจริง ดำเนินการแล้ว`
   } else {
     // Downgrade to assist request
     updateData.event_type = 'ASSIST'
     updateData.caregiver_note = caregiver_note || null
     // Keep status as ACKNOWLEDGED, device state stays CAREGIVER_ON_THE_WAY
     redirectUrl = `/caregiver/to-confirm?eventId=${id}`
-    lineMessage = `⚠️ ประเมินแล้วไม่รุนแรง\nผู้ป่วย: ${event.devices?.patients?.name || 'ไม่ระบุชื่อ'}\nเปลี่ยนเป็น: คำขอช่วยเหลือปกติ\nเวลา: ${new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}\n\nเจ้าหน้าที่กำลังเดินทางไปหาผู้ป่วยครับ`
+    const note = caregiver_note ? `\nบันทึก: ${sanitizeNote(caregiver_note)}` : ''
+    lineMessage = `⚠️ ประเมินแล้วไม่รุนแรง
+ผู้ป่วย: ${patientName}
+เปลี่ยนเป็น: คำขอช่วยเหลือปกติ${note}
+เวลา: ${timeStr}
+
+เจ้าหน้าที่กำลังเดินทางไปหาผู้ป่วยครับ`
   }
 
   // Update event
@@ -159,12 +198,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Send LINE notification
-  const relativeLineId = event.devices?.patients?.relative_line_id
+  const patient = event.devices?.patients
+  const relativeLineId = patient?.relative_line_id
+
   if (relativeLineId) {
-    console.log('📱 Sending triage LINE notification to:', relativeLineId)
+    console.log('📱 Sending triage LINE notification to:', relativeLineId, 'for patient:', patient?.name)
     await sendLineNotification(relativeLineId, lineMessage)
   } else {
-    console.warn('⚠️ No relative_line_id found, skipping LINE notification')
+    console.warn('⚠️ No relative_line_id found for patient:', patient?.name || 'Unknown', '- skipping LINE notification')
   }
 
   return NextResponse.json({
