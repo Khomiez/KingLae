@@ -7,12 +7,17 @@ interface AcknowledgeButtonProps {
   eventId: string;
   redirectTo?: string;
   className?: string;
+  caregiverId?: string;
 }
+
+// Default caregiver ID from seed database
+const DEFAULT_CAREGIVER_ID = 'c0000000-0000-0000-0000-000000000001';
 
 export default function AcknowledgeButton({
   eventId,
   redirectTo,
   className = "",
+  caregiverId = DEFAULT_CAREGIVER_ID,
 }: AcknowledgeButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -26,7 +31,7 @@ export default function AcknowledgeButton({
       const response = await fetch(`/api/events/${eventId}/acknowledge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ caregiver_id: caregiverId }),
       });
 
       const data = await response.json().catch(() => null);
