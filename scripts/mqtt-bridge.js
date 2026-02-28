@@ -75,6 +75,7 @@ client.on('message', async (topic, message) => {
 
       const currentState = deviceData ? deviceData.state : 'IDLE';
       const patientInfo = deviceData?.patients;
+      const timeStr = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
       // ==========================================
       // 🔴 กรณีปุ่ม แดง (SOS)
@@ -93,7 +94,7 @@ client.on('message', async (topic, message) => {
 
           // ส่ง LINE Notification
           if (patientInfo?.relative_line_id) {
-            const msg = `🚨 แจ้งเตือน: ฉุกเฉิน (SOS)\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nอุปกรณ์: ${mac}\nกรุณาตรวจสอบด่วน!`;
+            const msg = `🚨 แจ้งเตือนด่วน: คุณ ${patientInfo.name || 'ผู้ป่วย'} ต้องการความช่วยเหลือฉุกเฉิน (SOS)!\n\nกรุณาตรวจสอบในระบบหรือติดต่อผู้ป่วยทันทีครับ`;
             await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         } else {
@@ -112,7 +113,7 @@ client.on('message', async (topic, message) => {
 
           // ส่ง LINE Notification
           if (patientInfo?.relative_line_id) {
-            const msg = `🟡 แจ้งเตือน: ขอความช่วยเหลือ (ASSIST)\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nอุปกรณ์: ${mac}`;
+            const msg = `🟡 แจ้งเตือน: คุณ ${patientInfo.name || 'ผู้ป่วย'} ต้องการความช่วยเหลือทั่วไป (ASSIST)\n\nขณะนี้ระบบกำลังประสานงานเจ้าหน้าที่ให้ครับ`;
             await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         } else {
@@ -129,22 +130,32 @@ client.on('message', async (topic, message) => {
             .update({ status: 'CANCELLED', resolved_at: new Date().toISOString() })
             .eq('device_mac', mac)
             .eq('status', 'PENDING');
-
+          
           await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
           console.log(`🛑 Cancelled active alert for ${mac}`);
-        }
+        } 
         else if (currentState === 'CAREGIVER_ON_THE_WAY') {
+          // ดึงชื่อเจ้าหน้าที่มาแสดง
+          const { data: eventData } = await supabase
+            .from('events')
+            .select('caregivers(name)')
+            .eq('device_mac', mac)
+            .eq('status', 'ACKNOWLEDGED')
+            .single();
+
+          const caregiverName = eventData?.caregivers?.name || 'เจ้าหน้าที่';
+
           await supabase.from('events')
             .update({ status: 'RESOLVED', resolved_at: new Date().toISOString() })
             .eq('device_mac', mac)
             .eq('status', 'ACKNOWLEDGED');
+            
+          await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
+          console.log(`🩺 Caregiver arrived and resolved case for ${mac}`);
 
-          await supabase.from('devices').update({ state: 'CAREGIVER_ARRIVED' }).eq('mac_address', mac);
-          console.log(`🩺 Caregiver arrived at patient location for ${mac}`);
-
-          // ส่ง LINE Notification เมื่อเจ้าหน้าที่มาถึง
+          // ส่ง LINE Notification เมื่อทำงานเสร็จ
           if (patientInfo?.relative_line_id) {
-            const msg = `🩺 แจ้งเตือน: เจ้าหน้าที่มาถึงที่เกิดเหตุแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: กำลังดูแลผู้ป่วย`;
+            const msg = `🩺 แจ้งเตือน: เจ้าหน้าที่มาถึงแล้ว\n\nคุณ ${caregiverName} เดินทางถึงคุณ ${patientInfo.name || 'ผู้ป่วย'} แล้วและกำลังดำเนินการดูแลครับ`;
             await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         }
@@ -160,17 +171,30 @@ client.on('message', async (topic, message) => {
       // ==========================================
       else if (eventType === 'BLUE_BTN') {
         if (currentState === 'EMERGENCY' || currentState === 'ASSIST_REQUESTED') {
+          // ดึงชื่อ Caregiver (สำหรับ Demo ดึงคนแรกในตารางมาแสดง)
+          const { data: caregiver } = await supabase
+            .from('caregivers')
+            .select('id, name')
+            .limit(1)
+            .single();
+
+          const caregiverName = caregiver?.name || 'เจ้าหน้าที่ KingLae';
+
           await supabase.from('events')
-            .update({ status: 'ACKNOWLEDGED', acknowledged_at: new Date().toISOString() })
+            .update({ 
+              status: 'ACKNOWLEDGED', 
+              acknowledged_at: new Date().toISOString(),
+              acknowledged_by: caregiver?.id
+            })
             .eq('device_mac', mac)
             .eq('status', 'PENDING');
           
           await supabase.from('devices').update({ state: 'CAREGIVER_ON_THE_WAY' }).eq('mac_address', mac);
-          console.log(`🏃‍♂️ Caregiver accepted task for ${mac}. On the way!`);
+          console.log(`🏃‍♂️ ${caregiverName} accepted task for ${mac}`);
 
           // ส่ง LINE Notification เมื่อมีคนกดรับงาน
           if (patientInfo?.relative_line_id) {
-            const msg = `🏃‍♂️ ข่าวดี: มีเจ้าหน้าที่กดรับงานแล้ว!\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: กำลังเดินทางไปหาครับ`;
+            const msg = `🏃‍♂️ รับทราบเหตุ: เจ้าหน้าที่กำลังเดินทาง!\n\nคุณ ${caregiverName} ได้กดรับแจ้งเหตุของ คุณ ${patientInfo.name || 'ผู้ป่วย'} แล้วเมื่อเวลา ${timeStr} น. และกำลังเร่งเดินทางไปหาครับ`;
             await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         }
