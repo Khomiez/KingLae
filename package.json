@@ -13,6 +13,7 @@
     "mqtt-bridge": "node scripts/mqtt-bridge.js"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.98.0",
     "@types/pg": "^8.16.0",
     "date-fns": "^4.1.0",

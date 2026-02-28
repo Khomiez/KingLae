@@ -2,6 +2,7 @@ import Link from "next/link";
 import CaregiverNav from "../components/CaregiverNav";
 import AcknowledgeButton from "../components/AcknowledgeButton";
 import { createServerClient } from "@/lib/supabase-server";
+import AutoRefresh from "../components/AutoRefresh";
 
 async function getCaregiverData() {
   const supabase = createServerClient();
@@ -50,14 +51,14 @@ async function getCaregiverData() {
     (urgentEvents || []).map(async (event) => {
       const { data: device } = await supabase
         .from('devices')
-        .select('*')
+        .select('mac_address, patient_id, state, battery_level, health, last_seen_at')
         .eq('mac_address', event.device_mac)
         .single();
 
       const patientId = device?.patient_id;
       const { data: patient } = patientId ? await supabase
         .from('patients')
-        .select('*')
+        .select('id, name, date_of_birth, weight, height, symptoms, address, relative_line_id')
         .eq('id', patientId)
         .single() : null;
 
@@ -112,6 +113,8 @@ export default async function CaregiverHomePage() {
 
   return (
     <div className="bg-[var(--medical-bg)] text-slate-800 min-h-screen relative pb-24">
+      {/* Auto-refresh for realtime updates */}
+      <AutoRefresh />
       {/* Debug Banner - Remove in production */}
       {showDebug && (
         <div className="bg-yellow-100 border-b border-yellow-300 px-4 py-2 text-xs">
@@ -194,12 +197,6 @@ export default async function CaregiverHomePage() {
                         <h3 className="text-lg font-bold text-slate-900">
                           {event.patients?.name || 'ผู้ป่วย'}
                         </h3>
-                        <p className="text-sm text-slate-500 flex items-center gap-1">
-                          <span className="material-symbols-outlined text-sm">
-                            bed
-                          </span>
-                          เตียง {event.patients?.bed_number || '-'} • {event.patients?.room_number || '-'}
-                        </p>
                       </div>
                     </div>
 
@@ -268,12 +265,6 @@ export default async function CaregiverHomePage() {
                         <h3 className="text-lg font-bold text-slate-900">
                           {event.patients?.name || 'ผู้ป่วย'}
                         </h3>
-                        <p className="text-sm text-slate-500 flex items-center gap-1">
-                          <span className="material-symbols-outlined text-sm">
-                            bed
-                          </span>
-                          เตียง {event.patients?.bed_number || '-'} • {event.patients?.room_number || '-'}
-                        </p>
                       </div>
                     </div>
 

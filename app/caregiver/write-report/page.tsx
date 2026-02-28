@@ -25,8 +25,6 @@ type EventData = {
   patients: {
     id: string;
     name: string;
-    room_number: string;
-    bed_number: string;
   };
 };
 
@@ -191,9 +189,6 @@ export default function WriteReportPage({
                 <h2 className="text-lg font-bold text-gray-800">
                   {eventData.patients?.name}
                 </h2>
-                <p className="text-sm text-gray-500">
-                  ห้อง {eventData.patients?.room_number} • เตียง {eventData.patients?.bed_number}
-                </p>
               </div>
             </div>
             <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${

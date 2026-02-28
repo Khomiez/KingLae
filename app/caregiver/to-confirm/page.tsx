@@ -19,8 +19,6 @@ type EventData = {
   patients: {
     id: string;
     name: string;
-    room_number: string;
-    bed_number: string;
   };
 };
 
@@ -37,16 +35,27 @@ export default function ToConfirmPage() {
     let intervalId: NodeJS.Timeout;
 
     async function checkEventStatus() {
-      const { data: acknowledgedEvent } = await supabase
+      console.log('🔍 Checking for ACKNOWLEDGED events...');
+
+      // Query with nested patient data through devices
+      const { data: acknowledgedEvent, error: ackError } = await supabase
         .from('events')
-        .select('*, devices!inner(mac_address, patient_id, state), patients!inner(id, name, room_number, bed_number)')
+        .select('*, devices!inner(mac_address, patient_id, state, patients(id, name))')
         .eq('status', 'ACKNOWLEDGED')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
+      console.log('🔍 ACKNOWLEDGED query result:', acknowledgedEvent);
+      console.log('🔍 ACKNOWLEDGED query error:', ackError);
+
       if (acknowledgedEvent) {
-        setEvent(acknowledgedEvent);
+        // Transform data structure to match expected format
+        const transformedEvent = {
+          ...acknowledgedEvent,
+          patients: acknowledgedEvent.devices?.patients,
+        };
+        setEvent(transformedEvent as any);
         setLoading(false);
         return;
       }
@@ -151,10 +160,6 @@ export default function ToConfirmPage() {
             <h2 className="text-lg font-bold text-[var(--text-primary)]">
               {event.patients?.name}
             </h2>
-            <div className="flex items-center gap-1 text-sm text-[var(--medical-blue-dark)] mt-1 font-medium">
-              <span className="material-symbols-outlined text-base">bed</span>
-              เตียง {event.patients?.bed_number} • ห้อง {event.patients?.room_number}
-            </div>
           </div>
         </div>
 

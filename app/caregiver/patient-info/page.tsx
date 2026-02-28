@@ -27,10 +27,10 @@ async function getPatientEvents(patientId: string) {
 
   if (!device) return [];
 
-  // Then get events for this device
+  // Then get events for this device with caregiver notes
   const { data } = await supabase
     .from('events')
-    .select('*')
+    .select('id, event_type, status, created_at, resolved_at, caregiver_note')
     .eq('device_mac', device.mac_address)
     .order('created_at', { ascending: false })
     .limit(10);
@@ -256,19 +256,6 @@ export default async function PatientInfoPage({
                 </p>
               </div>
             )}
-            <div>
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
-                ห้อง / Room
-              </h3>
-              <div className="flex items-start gap-2">
-                <span className="material-symbols-outlined text-[18px] text-slate-400 mt-0.5">
-                  door_sliding
-                </span>
-                <p className="text-sm text-slate-700">
-                  {patient.room_number || '-'} {patient.bed_number && `• เตียง ${patient.bed_number}`}
-                </p>
-              </div>
-            </div>
             {patient.address && (
               <div>
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
@@ -355,10 +342,14 @@ export default async function PatientInfoPage({
             {events.length > 0 ? (
               events.map((event) => {
                 const { icon, color } = getEventIcon(event.event_type);
-                const statusBadge = event.status === 'RESOLVED'
-                  ? 'bg-green-50 text-green-600 border-green-100'
+                const statusBadge = event.status === 'COMPLETED'
+                  ? 'bg-blue-50 text-blue-600 border-blue-100'
+                  : event.status === 'RESOLVED'
+                  ? 'bg-purple-50 text-purple-600 border-purple-100'
                   : event.status === 'ACKNOWLEDGED'
-                  ? 'bg-slate-100 text-slate-500'
+                  ? 'bg-yellow-50 text-yellow-600'
+                  : event.status === 'CANCELLED'
+                  ? 'bg-gray-50 text-gray-500 border-gray-100'
                   : 'bg-red-50 text-red-600 border-red-100';
 
                 return (
@@ -377,11 +368,17 @@ export default async function PatientInfoPage({
                           {formatTimeAgo(event.created_at)}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {event.notes || 'ไม่มีรายละเอียด'}
-                      </p>
+                      {event.caregiver_note && (
+                        <p className="text-xs text-slate-600 mt-1 bg-slate-50 p-2 rounded border border-slate-100">
+                          📝 {event.caregiver_note}
+                        </p>
+                      )}
                       <span className={`inline-block mt-2 px-2 py-0.5 text-[10px] font-medium rounded-full border ${statusBadge}`}>
-                        {event.status}
+                        {event.status === 'COMPLETED' ? 'เสร็จสิ้น' :
+                         event.status === 'RESOLVED' ? 'เจ้าหน้าที่มาถึง' :
+                         event.status === 'ACKNOWLEDGED' ? 'รับงานแล้ว' :
+                         event.status === 'CANCELLED' ? 'ยกเลิก' :
+                         event.status}
                       </span>
                     </div>
                   </div>
