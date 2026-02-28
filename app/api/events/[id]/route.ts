@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const supabase = createServerClient()
   const { data, error } = await supabase
     .from('events')
-    .select('*, devices(mac_address, patient_id, state), caregivers(id, name, phone)')
+    .select('*, devices!inner(mac_address, patient_id, state), patients!inner(id, name, room_number, bed_number), caregivers(id, name, phone)')
     .eq('id', id)
     .single()
 

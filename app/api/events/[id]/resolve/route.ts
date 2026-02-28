@@ -9,9 +9,6 @@ async function resolveEvent(req: NextRequest, id: string) {
   const finalNote = caregiver_note ?? notes ?? null
 
   const supabase = createServerClient()
-  const { id } = await params
-  const body = await req.json()
-  const { caregiver_note } = body
 
   // Verify event exists and is ACKNOWLEDGED
   const { data: existing, error: fetchError } = await supabase

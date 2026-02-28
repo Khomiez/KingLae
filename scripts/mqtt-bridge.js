@@ -129,22 +129,22 @@ client.on('message', async (topic, message) => {
             .update({ status: 'CANCELLED', resolved_at: new Date().toISOString() })
             .eq('device_mac', mac)
             .eq('status', 'PENDING');
-          
+
           await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
           console.log(`🛑 Cancelled active alert for ${mac}`);
-        } 
+        }
         else if (currentState === 'CAREGIVER_ON_THE_WAY') {
           await supabase.from('events')
             .update({ status: 'RESOLVED', resolved_at: new Date().toISOString() })
             .eq('device_mac', mac)
             .eq('status', 'ACKNOWLEDGED');
-            
-          await supabase.from('devices').update({ state: 'IDLE' }).eq('mac_address', mac);
-          console.log(`🩺 Caregiver arrived and resolved case for ${mac}`);
 
-          // ส่ง LINE Notification เมื่อทำงานเสร็จ
+          await supabase.from('devices').update({ state: 'CAREGIVER_ARRIVED' }).eq('mac_address', mac);
+          console.log(`🩺 Caregiver arrived at patient location for ${mac}`);
+
+          // ส่ง LINE Notification เมื่อเจ้าหน้าที่มาถึง
           if (patientInfo?.relative_line_id) {
-            const msg = `✅ แจ้งเตือน: เจ้าหน้าที่เข้าดูแลเรียบร้อยแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: ปลอดภัย (ปกติ)`;
+            const msg = `🩺 แจ้งเตือน: เจ้าหน้าที่มาถึงที่เกิดเหตุแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: กำลังดูแลผู้ป่วย`;
             await sendLineNotification(patientInfo.relative_line_id, msg);
           }
         }

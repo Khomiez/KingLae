@@ -1,22 +1,90 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import CaregiverNav from "../components/CaregiverNav";
-import { createServerClient } from "@/lib/supabase-server";
+import { createBrowserClient } from "@supabase/ssr";
 
-async function getPendingEvent() {
-  const supabase = createServerClient();
-  const { data } = await supabase
-    .from('events')
-    .select('*, devices!inner(mac_address, patient_id, state), patients!inner(id, name, room_number, bed_number)')
-    .eq('status', 'ACKNOWLEDGED')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+type EventData = {
+  id: string;
+  event_type: string;
+  created_at: string;
+  status: string;
+  devices: {
+    mac_address: string;
+    patient_id: string;
+    state: string;
+  };
+  patients: {
+    id: string;
+    name: string;
+    room_number: string;
+    bed_number: string;
+  };
+};
 
-  return data;
-}
+export default function ToConfirmPage() {
+  const router = useRouter();
+  const [event, setEvent] = useState<EventData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [supabase] = useState(() => createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  ));
 
-export default async function ToConfirmPage() {
-  const event = await getPendingEvent();
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    async function checkEventStatus() {
+      const { data: acknowledgedEvent } = await supabase
+        .from('events')
+        .select('*, devices!inner(mac_address, patient_id, state), patients!inner(id, name, room_number, bed_number)')
+        .eq('status', 'ACKNOWLEDGED')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (acknowledgedEvent) {
+        setEvent(acknowledgedEvent);
+        setLoading(false);
+        return;
+      }
+
+      // Check if event was RESOLVED (green button pressed)
+      const { data: resolvedEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('status', 'RESOLVED')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (resolvedEvent) {
+        // Redirect to write-report page
+        router.push(`/caregiver/write-report?eventId=${resolvedEvent.id}`);
+        return;
+      }
+
+      setLoading(false);
+    }
+
+    // Initial check
+    checkEventStatus();
+
+    // Poll every 2 seconds
+    intervalId = setInterval(checkEventStatus, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [supabase, router]);
+
+  if (loading) {
+    return (
+      <div className="bg-gray-50 h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   if (!event) {
     return (

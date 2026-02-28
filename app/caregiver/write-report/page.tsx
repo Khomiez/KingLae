@@ -20,6 +20,7 @@ type EventData = {
   devices: {
     mac_address: string;
     patient_id: string;
+    state: string;
   };
   patients: {
     id: string;
@@ -77,8 +78,8 @@ export default function WriteReportPage({
 
     setSubmitting(true);
     try {
-      // Update event status to RESOLVED with notes
-      const response = await fetch(`/api/events/${eventData.id}/resolve`, {
+      // Update event status to COMPLETED with notes
+      const response = await fetch(`/api/events/${eventData.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes: caregiverNote }),
@@ -207,21 +208,31 @@ export default function WriteReportPage({
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
             <div className="flex flex-col">
               <span className="text-xs text-gray-400 font-medium">
-                สถานะปัจจุบัน
+                สถานะเหตุการณ์
               </span>
               <span className="text-blue-600 font-semibold flex items-center gap-1 mt-0.5">
                 <span className="material-symbols-outlined text-sm">
                   medical_services
                 </span>
-                {eventData.status === 'ACKNOWLEDGED' ? 'กำลังดูแล (Arrived)' : eventData.status}
+                {eventData.status === 'RESOLVED' ? 'เจ้าหน้าที่มาถึงแล้ว (Resolved)' : eventData.status}
               </span>
             </div>
-            <div className="text-right">
+            <div className="text-right flex flex-col items-end">
               <span className="text-xs text-gray-400 font-medium">
-                เวลาที่เกิดเหตุ
+                สถานะอุปกรณ์
               </span>
-              <span className="block text-gray-700 font-medium mt-0.5">
-                {formatTime(eventData.created_at)} น.
+              <span className={`text-xs font-semibold mt-0.5 px-2 py-1 rounded-full ${
+                eventData.devices?.state === 'CAREGIVER_ARRIVED'
+                  ? 'bg-purple-100 text-purple-700'
+                  : eventData.devices?.state === 'IDLE'
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-gray-100 text-gray-700'
+              }`}>
+                {eventData.devices?.state === 'CAREGIVER_ARRIVED'
+                  ? 'กำลังบันทึกข้อมูล'
+                  : eventData.devices?.state === 'IDLE'
+                  ? 'พร้อมใช้งาน'
+                  : eventData.devices?.state}
               </span>
             </div>
           </div>

@@ -35,13 +35,14 @@ async function sendLineNotification(lineUserId: string, message: string) {
   }
 }
 
-async function acknowledgeEvent(req: NextRequest, id: string) {
+async function completeEvent(req: NextRequest, id: string) {
   const body = await req.json()
-  const { caregiver_id } = body
+  const { caregiver_note, notes } = body
+  const finalNote = caregiver_note ?? notes ?? null
 
   const supabase = createServerClient()
 
-  // Verify event exists and is PENDING, and fetch patient info
+  // Verify event exists and is RESOLVED, and fetch device info
   const { data: existing, error: fetchError } = await supabase
     .from('events')
     .select('status, device_mac')
@@ -49,16 +50,15 @@ async function acknowledgeEvent(req: NextRequest, id: string) {
     .single()
 
   if (fetchError) return NextResponse.json({ error: 'Event not found' }, { status: 404 })
-  if (existing.status !== 'PENDING') {
-    return NextResponse.json({ error: `Cannot acknowledge event with status: ${existing.status}` }, { status: 409 })
+  if (existing.status !== 'RESOLVED') {
+    return NextResponse.json({ error: `Cannot complete event with status: ${existing.status}` }, { status: 409 })
   }
 
   const { data, error } = await supabase
     .from('events')
     .update({
-      status: 'ACKNOWLEDGED',
-      acknowledged_by: caregiver_id ?? null,
-      acknowledged_at: new Date().toISOString(),
+      status: 'COMPLETED',
+      caregiver_note: finalNote,
     })
     .eq('id', id)
     .select()
@@ -66,29 +66,24 @@ async function acknowledgeEvent(req: NextRequest, id: string) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Update device state to reflect caregiver is on the way
+  // Reset device state to IDLE (caregiver finished writing report)
   await supabase
     .from('devices')
-    .update({ state: 'CAREGIVER_ON_THE_WAY' })
-    .eq('mac_address', data.device_mac)
+    .update({ state: 'IDLE' })
+    .eq('mac_address', existing.device_mac)
 
   // Fetch patient info to send LINE notification
-  const { data: deviceData, error: deviceError } = await supabase
+  const { data: deviceData } = await supabase
     .from('devices')
     .select('patients(name, relative_line_id)')
-    .eq('mac_address', data.device_mac)
+    .eq('mac_address', existing.device_mac)
     .single()
 
-  console.log('📱 Acknowledge - deviceData:', deviceData)
-  console.log('📱 Acknowledge - deviceError:', deviceError)
-
   const patientInfo = deviceData?.patients
-  console.log('📱 Acknowledge - patientInfo:', patientInfo)
-  console.log('📱 Acknowledge - relative_line_id:', patientInfo?.relative_line_id)
 
-  // Send LINE notification when caregiver accepts the task (same as blue button)
+  // Send LINE notification when caregiver completes the report
   if (patientInfo?.relative_line_id) {
-    const msg = `🏃‍♂️ ข่าวดี: มีเจ้าหน้าที่กดรับงานแล้ว!\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: กำลังเดินทางไปหาครับ`;
+    const msg = `✅ แจ้งเตือน: เจ้าหน้าที่ทำการดูแลเสร็จสิ้นแล้ว\nผู้ป่วย: ${patientInfo.name || 'ไม่ระบุชื่อ'}\nสถานะ: ปลอดภัย (อุปกรณ์พร้อมใช้งาน)`;
     console.log('📱 Sending LINE notification to:', patientInfo.relative_line_id)
     await sendLineNotification(patientInfo.relative_line_id, msg);
   } else {
@@ -100,10 +95,10 @@ async function acknowledgeEvent(req: NextRequest, id: string) {
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params
-  return acknowledgeEvent(req, id)
+  return completeEvent(req, id)
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params
-  return acknowledgeEvent(req, id)
+  return completeEvent(req, id)
 }
